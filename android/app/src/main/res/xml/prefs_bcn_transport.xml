@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto">
+  <SwitchPreferenceCompat
+    android:key="@string/pref_bike_share"
+    android:title="@string/bike_share_availability_title"
+    android:summary="@string/bike_share_availability_summary"
+    app:singleLineTitle="false"
+    android:persistent="false"
+    android:defaultValue="false" />
+  <SwitchPreferenceCompat
+    android:key="@string/pref_bus_arrivals"
+    android:title="@string/bus_arrivals_title"
+    android:summary="@string/bus_arrivals_summary"
+    app:singleLineTitle="false"
+    android:persistent="false"
+    android:defaultValue="false" />
+  <EditTextPreference
+    android:key="@string/pref_tmb_app_id"
+    android:title="@string/bcn_transport_tmb_app_id"
+    android:persistent="false"
+    app:useSimpleSummaryProvider="false"
+    app:singleLineTitle="false" />
+  <EditTextPreference
+    android:key="@string/pref_tmb_app_key"
+    android:title="@string/bcn_transport_tmb_app_key"
+    android:persistent="false"
+    app:useSimpleSummaryProvider="false"
+    app:singleLineTitle="false" />
+</androidx.preference.PreferenceScreen>
