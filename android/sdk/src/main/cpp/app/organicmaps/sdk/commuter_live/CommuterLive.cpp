@@ -17,14 +17,7 @@
 
 namespace
 {
-::Framework * frm()
-{
-  if (!g_framework)
-    return nullptr;
-  return g_framework->NativeFramework();
-}
-
-dp::Color ParseColor(std::string const & text)
+dp::Color ParseCommuterColor(std::string const & text)
 {
   auto hex = [](char ch) -> int
   {
@@ -54,7 +47,7 @@ dp::Color ParseColor(std::string const & text)
                    static_cast<uint8_t>(value & 0xFF));
 }
 
-jobjectArray ToTrains(JNIEnv * env, std::vector<commuter_live::Train> const & trains)
+jobjectArray CommuterToTrains(JNIEnv * env, std::vector<commuter_live::Train> const & trains)
 {
   jclass const clazz = env->FindClass("app/organicmaps/sdk/commuter_live/CommuterTrain");
   if (clazz == nullptr)
@@ -164,13 +157,14 @@ JNIEXPORT void Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativeSetTra
       marker.m_headingRad = static_cast<float>(env->GetDoubleField(item, headingField) * kDegToRad);
       marker.m_directional = env->GetBooleanField(item, directionalField) == JNI_TRUE;
       marker.m_color =
-          ParseColor(colorText.get() == nullptr ? std::string() : jni::ToNativeString(env, colorText.get()));
+          ParseCommuterColor(colorText.get() == nullptr ? std::string() : jni::ToNativeString(env, colorText.get()));
       markers.push_back(marker);
       keys.push_back(keyText.get() == nullptr ? std::string() : jni::ToNativeString(env, keyText.get()));
       env->DeleteLocalRef(item);
     }
   }
-  frm()->SetCommuterTrains(std::move(markers), std::move(keys));
+  if (auto * framework = frm())
+    framework->SetCommuterTrains(std::move(markers), std::move(keys));
 }
 
 JNIEXPORT jboolean Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativePoll(JNIEnv * env, jclass, jobject out)
@@ -191,7 +185,7 @@ JNIEXPORT jboolean Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativePo
       return JNI_FALSE;
     }
     env->SetBooleanField(out, enabled, result.m_enabled ? JNI_TRUE : JNI_FALSE);
-    jobjectArray trainArray = ToTrains(env, result.m_trains);
+    jobjectArray trainArray = CommuterToTrains(env, result.m_trains);
     if (trainArray == nullptr)
       return JNI_FALSE;
     env->SetObjectField(out, trains, trainArray);

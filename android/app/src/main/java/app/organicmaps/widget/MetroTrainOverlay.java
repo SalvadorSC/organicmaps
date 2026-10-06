@@ -361,7 +361,10 @@ public class MetroTrainOverlay extends LinearLayout
   protected void dispatchDraw(Canvas canvas)
   {
     super.dispatchDraw(canvas);
-    if (mNeedsKey || mSelectedKey == null)
+    if (mSelectedKey == null)
+      return;
+    // A missing TMB key hides metro captions. Commuter trains do not need that key.
+    if (mNeedsKey && !mCommuter.containsKey(mSelectedKey))
       return;
     MetroTrain train = mTrains.get(mSelectedKey);
     CommuterTrain commuter = train == null ? mCommuter.get(mSelectedKey) : null;
