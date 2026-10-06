@@ -1,0 +1,54 @@
+{
+  "last_updated": 1791274659,
+  "ttl": 60,
+  "data": {
+    "en": {
+      "feeds": [
+        {
+          "name": "vehicle_types",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/en/vehicle_types.json"
+        },
+        {
+          "name": "station_information",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/en/station_information.json"
+        },
+        {
+          "name": "station_status",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/en/station_status.json"
+        }
+      ]
+    },
+    "ca": {
+      "feeds": [
+        {
+          "name": "vehicle_types",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/ca/vehicle_types.json"
+        },
+        {
+          "name": "station_information",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/ca/station_information.json"
+        },
+        {
+          "name": "station_status",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/ca/station_status.json"
+        }
+      ]
+    },
+    "es": {
+      "feeds": [
+        {
+          "name": "vehicle_types",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/es/vehicle_types.json"
+        },
+        {
+          "name": "station_information",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/es/station_information.json"
+        },
+        {
+          "name": "station_status",
+          "url": "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_bs/es/station_status.json"
+        }
+      ]
+    }
+  }
+}

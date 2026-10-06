@@ -15,6 +15,7 @@ import android.os.Bundle;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.format.DateUtils;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.text.style.UnderlineSpan;
@@ -43,6 +44,8 @@ import app.organicmaps.bookmarks.BookmarksSharingHelper;
 import app.organicmaps.downloader.DownloaderStatusIcon;
 import app.organicmaps.downloader.MapManagerHelper;
 import app.organicmaps.sdk.Framework;
+import app.organicmaps.sdk.bike_share.BikeShare;
+import app.organicmaps.sdk.bike_share.BikeShareAvailability;
 import app.organicmaps.sdk.bookmarks.data.Bookmark;
 import app.organicmaps.sdk.bookmarks.data.BookmarkManager;
 import app.organicmaps.sdk.bookmarks.data.DistanceAndAzimut;
@@ -60,6 +63,7 @@ import app.organicmaps.sdk.location.LocationCompatExtractor;
 import app.organicmaps.sdk.location.LocationListener;
 import app.organicmaps.sdk.location.SensorListener;
 import app.organicmaps.sdk.routing.RoutingController;
+import app.organicmaps.sdk.util.NetworkPolicy;
 import app.organicmaps.sdk.util.StringUtils;
 import app.organicmaps.sdk.util.concurrency.UiThread;
 import app.organicmaps.sdk.widget.placepage.CoordinatesFormatEntry;
@@ -85,6 +89,8 @@ import com.google.android.material.button.MaterialButton;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class PlacePageView extends Fragment implements View.OnClickListener, View.OnLongClickListener, LocationListener,
                                                        SensorListener, Observer<MapObject>,
@@ -102,6 +108,11 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
   private static final String OPENING_HOURS_FRAGMENT_TAG = "OPENING_HOURS_FRAGMENT_TAG";
   private static final String LINKS_FRAGMENT_TAG = "LINKS_FRAGMENT_TAG";
   private static final String TRACK_SHARE_MENU_ID = "TRACK_SHARE_MENU_ID";
+  private static final ExecutorService sBikeShareExecutor = Executors.newSingleThreadExecutor(runnable -> {
+    Thread thread = new Thread(runnable, "bike-share");
+    thread.setDaemon(true);
+    return thread;
+  });
 
   private View mFrame;
   // Preview.
@@ -114,6 +125,9 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
   private ArrowView mAvDirection;
   private TextView mTvDistance;
   private TextView mTvAddress;
+  private TextView mTvBikeShare;
+  private int mBikeShareRequestId;
+  private String mBikeShareKey = "";
   // Details.
   private TextView mTvLatlon;
   private View mWifi;
@@ -293,6 +307,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     mTvAddress = mPreview.findViewById(R.id.tv__address);
     mTvAddress.setOnLongClickListener(this);
     mTvAddress.setOnClickListener(this);
+    mTvBikeShare = mPreview.findViewById(R.id.tv__bike_share);
 
     mColorIcon = mFrame.findViewById(R.id.item_icon);
     mTvCategory = mFrame.findViewById(R.id.tv__category);
@@ -560,6 +575,80 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
       liveData.observe(getViewLifecycleOwner(), mTrackRecordingObserver);
       UiUtils.hide(mAvDirection, mTvDistance);
     }
+    refreshBikeShare();
+  }
+
+  private void refreshBikeShare()
+  {
+    if (mMapObject == null || !mMapObject.isBicycleRental() || !BikeShare.isEnabled()
+        || !NetworkPolicy.getCurrentNetworkUsageStatus())
+    {
+      mBikeShareKey = "";
+      ++mBikeShareRequestId;
+      UiUtils.hide(mTvBikeShare);
+      return;
+    }
+
+    final String key = mMapObject.getLat() + ":" + mMapObject.getLon() + ":" + mMapObject.getTitle();
+    if (key.equals(mBikeShareKey))
+      return;
+
+    mBikeShareKey = key;
+    UiUtils.hide(mTvBikeShare);
+    final int requestId = ++mBikeShareRequestId;
+    final double lat = mMapObject.getLat();
+    final double lon = mMapObject.getLon();
+    final String name = mMapObject.getTitle();
+    final String ref = mMapObject.getMetadata(Metadata.MetadataType.FMD_LOCAL_REF);
+    sBikeShareExecutor.execute(() -> {
+      final BikeShareAvailability availability = BikeShare.lookup(lat, lon, name, ref);
+      UiThread.run(() -> showBikeShare(requestId, availability));
+    });
+  }
+
+  private void showBikeShare(int requestId, @Nullable BikeShareAvailability availability)
+  {
+    if (!isAdded() || requestId != mBikeShareRequestId)
+      return;
+    if (availability == null)
+    {
+      UiUtils.hide(mTvBikeShare);
+      return;
+    }
+    mTvBikeShare.setText(formatBikeShare(availability));
+    UiUtils.show(mTvBikeShare);
+  }
+
+  @NonNull
+  private CharSequence formatBikeShare(@NonNull BikeShareAvailability availability)
+  {
+    final List<String> parts = new ArrayList<>();
+    if (availability.mMechanical >= 0 || availability.mEBikes >= 0)
+    {
+      int mechanical = availability.mMechanical;
+      int ebikes = availability.mEBikes;
+      if (mechanical < 0)
+        mechanical = Math.max(0, availability.mBikes - Math.max(ebikes, 0));
+      if (ebikes < 0)
+        ebikes = Math.max(0, availability.mBikes - mechanical);
+      if (mechanical > 0 || ebikes == 0)
+        parts.add(getResources().getQuantityString(R.plurals.bike_share_bikes, mechanical, mechanical));
+      if (ebikes > 0)
+        parts.add(getResources().getQuantityString(R.plurals.bike_share_ebikes, ebikes, ebikes));
+    }
+    else
+      parts.add(getResources().getQuantityString(R.plurals.bike_share_bikes, availability.mBikes, availability.mBikes));
+
+    if (availability.mDocks >= 0)
+      parts.add(getResources().getQuantityString(R.plurals.bike_share_docks, availability.mDocks, availability.mDocks));
+
+    final String counts = TextUtils.join(" · ", parts);
+    if (availability.mLastUpdatedSec <= 0)
+      return counts;
+
+    final CharSequence relative = DateUtils.getRelativeTimeSpanString(
+        availability.mLastUpdatedSec * 1000L, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS);
+    return counts + "\n" + getString(R.string.bike_share_updated, relative);
   }
 
   void refreshCategoryPreview()
