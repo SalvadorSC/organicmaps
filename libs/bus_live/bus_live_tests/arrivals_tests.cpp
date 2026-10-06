@@ -3,6 +3,9 @@
 #include "bus_live/arrivals.hpp"
 #include "bus_live/arrivals_service.hpp"
 #include "bus_live/gtfs_rt.hpp"
+#include "bus_live/tmb_parser.hpp"
+
+#include "coding/file_reader.hpp"
 
 #include <chrono>
 #include <memory>
@@ -273,5 +276,146 @@ UNIT_TEST(InBarcelonaArea_Bounds)
 {
   TEST(bus_live::InBarcelonaArea(ms::LatLon(41.3822242, 2.0478329)), ());
   TEST(!bus_live::InBarcelonaArea(ms::LatLon(40.4168, -3.7038)), ());
+}
+
+bus_live::StopQuery NearStop(ms::LatLon const & point, std::string name)
+{
+  bus_live::StopQuery query;
+  query.m_point = ms::LatLon(point.m_lat + 0.000135, point.m_lon);
+  query.m_name = std::move(name);
+  return query;
+}
+
+bool UrlHas(std::vector<std::string> const & urls, std::string const & needle)
+{
+  for (auto const & url : urls)
+    if (url.find(needle) != std::string::npos)
+      return true;
+  return false;
+}
+
+// City stops 108 and 559 are absent from AMB. With credentials set, the TMB
+// catalog is loaded once and those OSM points resolve to CODI_PARADA. Stop
+// 1720 exists in both catalogs and the two feeds merge.
+UNIT_TEST(ArrivalsService_TmbCatalogResolvesCityStops)
+{
+  std::string catalogJson;
+  FileReader(BUS_LIVE_TEST_DATA_DIR "/tmb_parades_sample.json").ReadAsString(catalogJson);
+  auto const catalog = bus_live::ParseTmbCatalog(catalogJson);
+  TEST(catalog.has_value(), ());
+
+  bus_live::TransitStop const * espanya = nullptr;
+  bus_live::TransitStop const * molina = nullptr;
+  bus_live::TransitStop const * walden = nullptr;
+  for (auto const & stop : *catalog)
+    if (stop.m_code == "108")
+      espanya = &stop;
+    else if (stop.m_code == "559")
+      molina = &stop;
+    else if (stop.m_code == "1720")
+      walden = &stop;
+  TEST(espanya != nullptr && molina != nullptr && walden != nullptr, ());
+
+  bus_live::StaticIndex index;
+  bus_live::TransitStop shared = *walden;
+  shared.m_id = "001720";
+  index.m_stops.push_back(shared);
+  index.m_routes.emplace("RL21", bus_live::GtfsRoute{"RL21", "L21", "L21"});
+  index.m_routes.emplace("R63", bus_live::GtfsRoute{"R63", "63", "63"});
+  index.m_trips.emplace("TRIPL21", bus_live::GtfsTrip{"TRIPL21", "RL21", "St. Feliu"});
+  index.m_trips.emplace("TRIP63", bus_live::GtfsTrip{"TRIP63", "R63", "Via"});
+
+  Proto header;
+  header.Int(3, 1791287276);
+  Proto trips;
+  trips.Msg(1, header);
+  AddUpdate(trips, "TRIPL21", 0, "001720", true, 1791287400);
+  AddUpdate(trips, "TRIP63", 0, "1720", true, 1791287900);
+
+  std::string_view constexpr kCity = R"({
+    "parades": [{"linies_trajectes": [{
+      "nom_linia": "D20",
+      "desti_trajecte": "Pg. Zona Franca",
+      "propers_busos": [{"temps_arribada": 1791287600000}]
+    }]}]
+  })";
+  std::string_view constexpr kShared = R"({
+    "parades": [{"linies_trajectes": [{
+      "nom_linia": "L21",
+      "desti_trajecte": "St. Feliu L.",
+      "propers_busos": [{"temps_arribada": 1791287430000}]
+    }, {
+      "nom_linia": "157",
+      "desti_trajecte": "Sant Joan Despi",
+      "propers_busos": [{"temps_arribada": 1791287800000}]
+    }]}]
+  })";
+
+  Env env;
+  env.m_index = std::move(index);
+  env.m_trips = trips.m_bytes;
+  env.m_creds = {"id", "key"};
+  env.m_catalog = catalog;
+  auto service = std::make_unique<bus_live::ArrivalsService>(
+      [&env, kCity, kShared](std::string const & url) -> std::optional<std::string>
+  {
+    ++env.m_http;
+    env.m_urls.push_back(url);
+    if (url.find("trips.bin") != std::string::npos)
+      return env.m_trips;
+    if (url.find("/itransit/bus/parades/1720?") != std::string::npos)
+      return std::string(kShared);
+    if (url.find("/itransit/bus/parades/") != std::string::npos)
+      return std::string(kCity);
+    return std::nullopt;
+  }, [&env] { return env.m_wall; }, [&env] { return env.m_steady; }, [&env] { return env.m_creds; },
+      [&env]() -> std::optional<bus_live::StaticIndex>
+  {
+    ++env.m_staticLoads;
+    return env.m_index;
+  }, [&env](bus_live::Credentials const &) -> std::optional<std::vector<bus_live::TransitStop>>
+  {
+    ++env.m_catalogLoads;
+    return env.m_catalog;
+  });
+
+  auto const city108 = service->Lookup(NearStop(espanya->m_point, "Pl. Espanya"));
+  TEST_EQUAL(static_cast<int>(city108.m_status), static_cast<int>(bus_live::LookupStatus::Ok), ());
+  TEST_EQUAL(city108.m_arrivals.size(), 1, ());
+  TEST_EQUAL(city108.m_arrivals[0].m_line, "D20", ());
+  TEST_EQUAL(env.m_catalogLoads, 1, ());
+  TEST_EQUAL(env.m_http, 1, ());
+  TEST(UrlHas(env.m_urls, "/parades/108?"), ());
+  TEST(!UrlHas(env.m_urls, "trips.bin"), ());
+  TEST(!UrlHas(env.m_urls, "/parades/698907"), ());
+
+  auto const city559 = service->Lookup(NearStop(molina->m_point, "Pl. Molina"));
+  TEST_EQUAL(city559.m_arrivals.size(), 1, ());
+  TEST_EQUAL(env.m_catalogLoads, 1, ());
+  TEST_EQUAL(env.m_http, 2, ());
+  TEST(UrlHas(env.m_urls, "/parades/559?"), ());
+
+  auto const both = service->Lookup(NearStop(walden->m_point, "Av. Indústria - Walden"));
+  TEST_EQUAL(static_cast<int>(both.m_status), static_cast<int>(bus_live::LookupStatus::Ok), ());
+  TEST_EQUAL(both.m_arrivals.size(), 3, ());
+  TEST_EQUAL(both.m_arrivals[0].m_line, "L21", ());
+  TEST(both.m_arrivals[0].m_fromTmb, ());
+  TEST_EQUAL(both.m_arrivals[0].m_etaUnixSec, 1791287430, ());
+  TEST_EQUAL(both.m_arrivals[1].m_line, "157", ());
+  TEST(both.m_arrivals[1].m_fromTmb, ());
+  TEST_EQUAL(both.m_arrivals[2].m_line, "63", ());
+  TEST(!both.m_arrivals[2].m_fromTmb, ());
+  TEST_EQUAL(env.m_catalogLoads, 1, ());
+  TEST(UrlHas(env.m_urls, "trips.bin"), ());
+  TEST(UrlHas(env.m_urls, "/parades/1720?"), ());
+
+  env.m_steady += std::chrono::seconds{31};
+  service->Lookup(NearStop(espanya->m_point, "Pl. Espanya"));
+  TEST_EQUAL(env.m_catalogLoads, 1, ());
+  TEST_EQUAL(env.m_http, 5, ());
+
+  env.m_steady += std::chrono::seconds{7 * 24 * 3600};
+  service->Lookup(NearStop(espanya->m_point, "Pl. Espanya"));
+  TEST_EQUAL(env.m_catalogLoads, 2, ());
 }
 }  // namespace arrivals_tests

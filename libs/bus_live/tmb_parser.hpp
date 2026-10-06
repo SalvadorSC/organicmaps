@@ -19,8 +19,10 @@ struct TmbFeed
 // Times in the payload are milliseconds. Arrivals are not filtered by age here.
 std::optional<TmbFeed> ParseTmbArrivals(std::string_view json);
 
-// Accepts a GeoJSON FeatureCollection (CODI_PARADA / NOM_PARADA) or a
-// parades/stops array. An empty vector means the JSON parsed but no stop
-// was recognized, so callers fall back to AMB matching.
+// Accepts the live TMB catalog: a GeoJSON FeatureCollection whose features
+// use geometry.coordinates [lon, lat] and integer properties.CODI_PARADA.
+// NOM_PARADA is the stop name. A parades array with lat/lon is also accepted.
+// Null properties are ignored. An empty vector means the JSON parsed but no
+// stop was recognized.
 std::optional<std::vector<TransitStop>> ParseTmbCatalog(std::string_view json);
 }  // namespace bus_live
