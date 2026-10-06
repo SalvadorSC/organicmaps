@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="bcn_transport_title">BCN Transport</string>
-  <string name="bcn_transport_summary">Bicicletas compartidas y llegadas de autobús en el área de Barcelona.</string>
+  <string name="bcn_transport_summary">Bicicletas compartidas, llegadas de autobús y metro estimado en el área de Barcelona.</string>
   <string name="bus_arrivals_title">Llegadas de autobús en directo</string>
   <string name="bus_arrivals_summary">Al abrir una parada de autobús en el área de Barcelona, muestra los próximos autobuses. Descarga los datos públicos de la AMB y, si añades una clave de TMB, las llegadas de los autobuses urbanos. Respeta el ajuste de datos móviles. Desactivado por defecto. La clave se queda en este dispositivo.</string>
   <string name="bcn_transport_tmb_app_id">Identificador de la app TMB</string>
@@ -12,4 +12,11 @@
   <string name="bus_arrival_imminent">Inminente</string>
   <string name="bus_arrival_minutes">%d min</string>
   <string name="bus_arrivals_no_data">Sin datos en directo</string>
+  <string name="metro_live_title">Metro en directo</string>
+  <string name="metro_live_summary">Muestra aproximadamente dónde está cada tren del metro de Barcelona, con el color de la línea. Hace falta el identificador y la clave de TMB de esta pantalla. Respeta el ajuste de datos móviles. Desactivado por defecto. Las posiciones son una estimación, no GPS.</string>
+  <string name="metro_estimated">Estimación</string>
+  <string name="metro_needs_key">Añade el identificador y la clave de TMB en BCN Transport para ver los trenes.</string>
+  <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
+  <string name="metro_lines_title">Líneas</string>
+  <string name="metro_lines_summary">Se muestran en el mapa. Todas las líneas están activadas hasta que desactives una.</string>
 </resources>

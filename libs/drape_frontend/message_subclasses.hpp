@@ -9,6 +9,7 @@
 #include "drape_frontend/gui/layer_render.hpp"
 #include "drape_frontend/gui/skin.hpp"
 #include "drape_frontend/message.hpp"
+#include "drape_frontend/metro_train_marker.hpp"
 #include "drape_frontend/my_position.hpp"
 #include "drape_frontend/overlay_batcher.hpp"
 #include "drape_frontend/postprocess_renderer.hpp"
@@ -1625,5 +1626,17 @@ private:
   std::vector<uint8_t> m_bytes;
   uint32_t m_width = 0;
   uint32_t m_height = 0;
+};
+
+class UpdateMetroTrainsMessage : public Message
+{
+public:
+  explicit UpdateMetroTrainsMessage(std::vector<MetroTrainMarker> trains) : m_trains(std::move(trains)) {}
+
+  Type GetType() const override { return Type::UpdateMetroTrains; }
+  std::vector<MetroTrainMarker> & Trains() { return m_trains; }
+
+private:
+  std::vector<MetroTrainMarker> m_trains;
 };
 }  // namespace df

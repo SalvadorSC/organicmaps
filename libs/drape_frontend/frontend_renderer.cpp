@@ -1026,6 +1026,13 @@ void FrontendRenderer::AcceptMessage(ref_ptr<Message> message)
     break;
   }
 
+  case Message::Type::UpdateMetroTrains:
+  {
+    ref_ptr<UpdateMetroTrainsMessage> msg = message;
+    m_metroTrains.SetTrains(std::move(msg->Trains()));
+    break;
+  }
+
   case Message::Type::NotifyRenderThread:
   {
     ref_ptr<NotifyRenderThreadMessage> msg = message;
@@ -1584,6 +1591,8 @@ bool FrontendRenderer::RenderScene(ScreenBase const & modelView, bool activeFram
       clearBits |= dp::ClearBits::StencilBit;
     m_context->Clear(clearBits, dp::kClearBitsStoreAll);
 
+    m_metroTrains.Render(m_context, m_texMng, make_ref(m_gpuProgramManager), modelView, GetCurrentZoom(),
+                         m_frameValues);
     m_myPositionController->Render(m_context, make_ref(m_gpuProgramManager), modelView, GetCurrentZoom(),
                                    m_frameValues);
   }
@@ -2512,6 +2521,7 @@ void FrontendRenderer::OnContextDestroy()
   m_screenQuadRenderer.reset();
 
   m_myPositionController->ResetRenderShape();
+  m_metroTrains.ResetGpu();
   m_routeRenderer->ClearContextDependentResources();
   m_gpsTrackRenderer->ClearRenderData();
   m_trafficRenderer->ClearContextDependentResources();

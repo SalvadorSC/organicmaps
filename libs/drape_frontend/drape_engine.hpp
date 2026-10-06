@@ -7,6 +7,7 @@
 #include "drape_frontend/drape_engine_params.hpp"
 #include "drape_frontend/drape_hints.hpp"
 #include "drape_frontend/frontend_renderer.hpp"
+#include "drape_frontend/metro_train_marker.hpp"
 #include "drape_frontend/overlays_tracker.hpp"
 #include "drape_frontend/postprocess_renderer.hpp"
 #include "drape_frontend/route_shape.hpp"
@@ -124,6 +125,8 @@ public:
   void Invalidate();
 
   void SetVisibleViewport(m2::RectD const & rect) const;
+  // Estimated metro arrows. Drawn by the frontend renderer with the frame's screen.
+  void SetMetroTrains(std::vector<MetroTrainMarker> trains);
 
   void AddTouchEvent(TouchEvent const & event);
   void Scale(double factor, m2::PointD const & pxPoint, bool isAnim);

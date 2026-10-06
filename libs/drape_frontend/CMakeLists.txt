@@ -122,6 +122,9 @@ set(SRC
   message_subclasses.hpp
   metaline_manager.cpp
   metaline_manager.hpp
+  metro_train_marker.hpp
+  metro_train_renderer.cpp
+  metro_train_renderer.hpp
   my_position.cpp
   my_position.hpp
   my_position_controller.cpp
