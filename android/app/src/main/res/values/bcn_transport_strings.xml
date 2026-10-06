@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="bcn_transport_title">BCN Transport</string>
+  <string name="bcn_transport_summary">Bike-share and live bus arrivals for the Barcelona area.</string>
+  <string name="bus_arrivals_title">Live bus arrivals</string>
+  <string name="bus_arrivals_summary">When you open a bus stop in the Barcelona area, show upcoming buses. Downloads public AMB data and, if you add a TMB key, city-bus arrivals. Respects the mobile data setting. Off by default. The key stays on this device.</string>
+  <string name="bcn_transport_tmb_app_id">TMB app id</string>
+  <string name="bcn_transport_tmb_app_key">TMB app key</string>
+  <string name="bcn_transport_tmb_id_empty">Optional</string>
+  <string name="bcn_transport_tmb_key_saved">Saved on this device</string>
+  <string name="bcn_transport_tmb_key_empty">Optional. Stored only on this device</string>
+  <string name="bus_arrival_imminent">Imminent</string>
+  <string name="bus_arrival_minutes">%d min</string>
+  <string name="bus_arrivals_no_data">No live data</string>
+</resources>

@@ -308,6 +308,19 @@ public class MapObject implements PlacePageData
     return mRawTypes.contains("amenity-bicycle_rental");
   }
 
+  public boolean isBusStop()
+  {
+    if (mRawTypes == null)
+      return false;
+    if (mRawTypes.contains("highway-bus_stop"))
+      return true;
+    if (!mRawTypes.contains("public_transport-platform"))
+      return false;
+    return !mRawTypes.contains("railway-tram_stop") && !mRawTypes.contains("railway-station")
+ && !mRawTypes.contains("railway-halt") && !mRawTypes.contains("railway-subway_entrance")
+ && !mRawTypes.contains("railway-subway");
+  }
+
   public final boolean isMyPosition()
   {
     return mMapObjectType == MY_POSITION;

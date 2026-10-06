@@ -12,9 +12,12 @@ import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.format.DateFormat;
 import android.text.format.DateUtils;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
@@ -56,6 +59,9 @@ import app.organicmaps.sdk.bookmarks.data.Metadata;
 import app.organicmaps.sdk.bookmarks.data.Track;
 import app.organicmaps.sdk.bookmarks.data.TrackRecording;
 import app.organicmaps.sdk.bookmarks.data.TrackSelectionCandidate;
+import app.organicmaps.sdk.bus_live.BusArrival;
+import app.organicmaps.sdk.bus_live.BusArrivals;
+import app.organicmaps.sdk.bus_live.BusLive;
 import app.organicmaps.sdk.downloader.CountryItem;
 import app.organicmaps.sdk.downloader.MapManager;
 import app.organicmaps.sdk.editor.Editor;
@@ -113,6 +119,12 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     thread.setDaemon(true);
     return thread;
   });
+  private static final long BUS_REFRESH_MS = 30_000L;
+  private static final ExecutorService sBusExecutor = Executors.newSingleThreadExecutor(runnable -> {
+    Thread thread = new Thread(runnable, "bus-arrivals");
+    thread.setDaemon(true);
+    return thread;
+  });
 
   private View mFrame;
   // Preview.
@@ -128,6 +140,21 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
   private TextView mTvBikeShare;
   private int mBikeShareRequestId;
   private String mBikeShareKey = "";
+  private TextView mTvBusArrivals;
+  private int mBusRequestId;
+  private String mBusKey = "";
+  private final Handler mBusHandler = new Handler(Looper.getMainLooper());
+  private final Runnable mBusTick = new Runnable() {
+    @Override
+    public void run()
+    {
+      if (mBusKey.isEmpty())
+        return;
+      requestBusArrivals();
+      if (!mBusKey.isEmpty())
+        mBusHandler.postDelayed(this, BUS_REFRESH_MS);
+    }
+  };
   // Details.
   private TextView mTvLatlon;
   private View mWifi;
@@ -308,6 +335,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     mTvAddress.setOnLongClickListener(this);
     mTvAddress.setOnClickListener(this);
     mTvBikeShare = mPreview.findViewById(R.id.tv__bike_share);
+    mTvBusArrivals = mPreview.findViewById(R.id.tv__bus_arrivals);
 
     mColorIcon = mFrame.findViewById(R.id.item_icon);
     mTvCategory = mFrame.findViewById(R.id.tv__category);
@@ -416,6 +444,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     MwmApplication.from(requireContext()).getLocationHelper().removeListener(this);
     MwmApplication.from(requireContext()).getSensorHelper().removeListener(this);
     detachCountry();
+    stopBusArrivals();
   }
 
   private void setCurrentCountry()
@@ -576,6 +605,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
       UiUtils.hide(mAvDirection, mTvDistance);
     }
     refreshBikeShare();
+    refreshBusArrivals();
   }
 
   private void refreshBikeShare()
@@ -649,6 +679,113 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     final CharSequence relative = DateUtils.getRelativeTimeSpanString(
         availability.mLastUpdatedSec * 1000L, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS);
     return counts + "\n" + getString(R.string.bike_share_updated, relative);
+  }
+
+  private void stopBusArrivals()
+  {
+    mBusKey = "";
+    ++mBusRequestId;
+    mBusHandler.removeCallbacks(mBusTick);
+    if (mTvBusArrivals != null)
+      UiUtils.hide(mTvBusArrivals);
+  }
+
+  private boolean canRequestBusArrivals()
+  {
+    return isAdded() && mMapObject != null && mMapObject.isBusStop() && BusLive.isEnabled()
+ && NetworkPolicy.getCurrentNetworkUsageStatus();
+  }
+
+  private void refreshBusArrivals()
+  {
+    if (!canRequestBusArrivals())
+    {
+      stopBusArrivals();
+      return;
+    }
+
+    final String key = mMapObject.getLat() + ":" + mMapObject.getLon() + ":" + mMapObject.getTitle();
+    if (key.equals(mBusKey))
+      return;
+
+    mBusKey = key;
+    mBusHandler.removeCallbacks(mBusTick);
+    UiUtils.hide(mTvBusArrivals);
+    requestBusArrivals();
+    mBusHandler.postDelayed(mBusTick, BUS_REFRESH_MS);
+  }
+
+  private void requestBusArrivals()
+  {
+    if (!canRequestBusArrivals())
+    {
+      stopBusArrivals();
+      return;
+    }
+
+    final int requestId = ++mBusRequestId;
+    final double lat = mMapObject.getLat();
+    final double lon = mMapObject.getLon();
+    final String name = mMapObject.getTitle();
+    final String ref = mMapObject.getMetadata(Metadata.MetadataType.FMD_LOCAL_REF);
+    sBusExecutor.execute(() -> {
+      final BusArrivals arrivals = BusLive.lookup(lat, lon, name, ref);
+      UiThread.run(() -> showBusArrivals(requestId, arrivals));
+    });
+  }
+
+  private void showBusArrivals(int requestId, @Nullable BusArrivals arrivals)
+  {
+    if (!isAdded() || requestId != mBusRequestId || mTvBusArrivals == null)
+      return;
+    if (arrivals == null || arrivals.mStatus == BusArrivals.NOT_APPLICABLE)
+    {
+      UiUtils.hide(mTvBusArrivals);
+      return;
+    }
+    if (arrivals.mStatus != BusArrivals.OK || arrivals.mArrivals == null || arrivals.mArrivals.length == 0)
+    {
+      mTvBusArrivals.setText(R.string.bus_arrivals_no_data);
+      UiUtils.show(mTvBusArrivals);
+      return;
+    }
+    mTvBusArrivals.setText(formatBusArrivals(arrivals));
+    UiUtils.show(mTvBusArrivals);
+  }
+
+  @NonNull
+  private CharSequence formatBusArrivals(@NonNull BusArrivals arrivals)
+  {
+    final StringBuilder builder = new StringBuilder();
+    final long nowSec = System.currentTimeMillis() / 1000L;
+    for (BusArrival arrival : arrivals.mArrivals)
+    {
+      if (arrival == null || TextUtils.isEmpty(arrival.mLine))
+        continue;
+      if (builder.length() > 0)
+        builder.append('\n');
+      builder.append(arrival.mLine);
+      if (!TextUtils.isEmpty(arrival.mDestination))
+        builder.append(" · ").append(arrival.mDestination);
+      builder.append(" · ").append(formatBusEta(arrival.mEtaUnixSec, nowSec));
+    }
+    if (builder.length() == 0)
+      return getString(R.string.bus_arrivals_no_data);
+    return builder;
+  }
+
+  @NonNull
+  private String formatBusEta(long etaUnixSec, long nowSec)
+  {
+    final long delta = etaUnixSec - nowSec;
+    if (delta <= 45)
+      return getString(R.string.bus_arrival_imminent);
+    if (delta <= 30 * 60)
+    {
+      final int minutes = (int) ((delta + 59) / 60);
+      return getString(R.string.bus_arrival_minutes, minutes);
+    }
+    return DateFormat.format("HH:mm", etaUnixSec * 1000L).toString();
   }
 
   void refreshCategoryPreview()

@@ -18,7 +18,6 @@ import app.organicmaps.editor.LanguagesFragment;
 import app.organicmaps.editor.ProfileActivity;
 import app.organicmaps.help.HelpActivity;
 import app.organicmaps.sdk.Framework;
-import app.organicmaps.sdk.bike_share.BikeShare;
 import app.organicmaps.sdk.downloader.MapManager;
 import app.organicmaps.sdk.editor.OsmOAuth;
 import app.organicmaps.sdk.editor.data.Language;
@@ -70,7 +69,6 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment implements La
     initShowDownloadedRegionsPrefsCallbacks();
     initPlayServicesPrefsCallbacks();
     initSearchPrivacyPrefsCallbacks();
-    initBikeSharePrefsCallbacks();
     initScreenSleepEnabledPrefsCallbacks();
     initShowOnLockScreenPrefsCallbacks();
     initNightNavigationPrefsCallbacks();
@@ -136,6 +134,11 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment implements La
       else if (key.equals(getString(R.string.pref_bg_tiles_screen)))
       {
         getSettingsActivity().stackFragment(BgTilesSettingsFragment.class, getString(R.string.pref_bg_tiles_title),
+                                            null);
+      }
+      else if (key.equals(getString(R.string.pref_bcn_transport)))
+      {
+        getSettingsActivity().stackFragment(BcnTransportSettingsFragment.class, getString(R.string.bcn_transport_title),
                                             null);
       }
       else if (key.equals(getString(R.string.pref_help)))
@@ -569,16 +572,6 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment implements La
     ((TwoStatePreference) pref).setChecked(Framework.nativeIsShowDownloadedRegions());
     pref.setOnPreferenceChangeListener((preference, newValue) -> {
       Framework.nativeSetShowDownloadedRegions((boolean) newValue);
-      return true;
-    });
-  }
-
-  private void initBikeSharePrefsCallbacks()
-  {
-    final TwoStatePreference pref = getPreference(getString(R.string.pref_bike_share));
-    pref.setChecked(BikeShare.isEnabled());
-    pref.setOnPreferenceChangeListener((preference, newValue) -> {
-      BikeShare.setEnabled((Boolean) newValue);
       return true;
     });
   }

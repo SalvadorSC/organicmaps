@@ -57,6 +57,10 @@
   <string name="pref_privacy" translatable="false">pref_privacy</string>
   <string name="pref_search_history" translatable="false">pref_search_history</string>
   <string name="pref_bike_share" translatable="false">BikeShareAvailability</string>
+  <string name="pref_bcn_transport" translatable="false">BcnTransport</string>
+  <string name="pref_bus_arrivals" translatable="false">BusArrivalsEnabled</string>
+  <string name="pref_tmb_app_id" translatable="false">TmbAppId</string>
+  <string name="pref_tmb_app_key" translatable="false">TmbAppKey</string>
   <string name="never_enum_value" translatable="false">NEVER</string>
   <string name="always_enum_value" translatable="false">ALWAYS</string>
   <string name="auto_enum_value" translatable="false">AUTO</string>

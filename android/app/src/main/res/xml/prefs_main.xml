@@ -188,13 +188,12 @@
       app:singleLineTitle="false"
       android:defaultValue="true"
       android:order="2" />
-    <SwitchPreferenceCompat
-      android:key="@string/pref_bike_share"
-      android:title="@string/bike_share_availability_title"
-      android:summary="@string/bike_share_availability_summary"
+    <Preference
+      android:key="@string/pref_bcn_transport"
+      android:title="@string/bcn_transport_title"
+      android:summary="@string/bcn_transport_summary"
       app:singleLineTitle="false"
       android:persistent="false"
-      android:defaultValue="false"
       android:order="3" />
   </androidx.preference.PreferenceCategory>
   <androidx.preference.PreferenceCategory
