@@ -208,19 +208,34 @@ double BearingDeg(ms::LatLon const & from, ms::LatLon const & to)
   return deg;
 }
 
-size_t SegmentIndex(std::vector<double> const & alongM, double at, bool forward)
+// Bearing of a walk from `at` toward `toward` along the polyline. Out-and-back
+// joins (a few metres at a station) do not move the sample, so they cannot
+// steal the arrow. `travelForward` is false when the walk steps back along the
+// approach and the arrow should still point toward `at`.
+bool DisplacementBearing(IndexedLine const & line, double at, double toward, bool travelForward, double & bearing)
 {
-  if (alongM.size() < 2)
-    return 0;
-  size_t i = 0;
-  while (i + 2 < alongM.size() && alongM[i + 1] < at)
-    ++i;
-  // On a vertex, keep the segment that continues in the direction of travel.
-  if (forward && i + 2 < alongM.size() && at >= alongM[i + 1])
-    ++i;
-  if (!forward && i > 0 && at <= alongM[i])
-    --i;
-  return i;
+  double constexpr kStepM = 8.0;
+  double constexpr kWantM = 25.0;
+  ms::LatLon const origin = PointAt(line, at);
+  double const sign = toward >= at ? 1.0 : -1.0;
+  double pos = at;
+  ms::LatLon last = origin;
+  for (int n = 0; n < 64; ++n)
+  {
+    if ((toward - pos) * sign <= 0.5)
+      break;
+    double next = pos + sign * kStepM;
+    if ((next - toward) * sign > 0)
+      next = toward;
+    last = PointAt(line, next);
+    if (ms::DistanceOnEarth(origin, last) >= kWantM || std::abs(next - pos) < 0.1)
+      break;
+    pos = next;
+  }
+  if (ms::DistanceOnEarth(origin, last) < 1.0)
+    return false;
+  bearing = travelForward ? BearingDeg(origin, last) : BearingDeg(last, origin);
+  return true;
 }
 
 double HeadingDeg(IndexedLine const & line, int fromIndex, int toIndex, double along)
@@ -232,12 +247,14 @@ double HeadingDeg(IndexedLine const & line, int fromIndex, int toIndex, double a
   auto const & to = line.m_stations[static_cast<size_t>(toIndex)];
   if (from.m_alongM >= 0 && to.m_alongM >= 0 && line.m_shape.size() >= 2 && line.m_alongM.size() == line.m_shape.size())
   {
-    bool const forward = to.m_alongM >= from.m_alongM;
     double const at = std::clamp(along, std::min(from.m_alongM, to.m_alongM), std::max(from.m_alongM, to.m_alongM));
-    size_t const i = SegmentIndex(line.m_alongM, at, forward);
-    if (i + 1 < line.m_shape.size())
-      return forward ? BearingDeg(line.m_shape[i], line.m_shape[i + 1])
-                     : BearingDeg(line.m_shape[i + 1], line.m_shape[i]);
+    double bearing = 0;
+    // Toward the next stop. At a terminus this walk has no room, so the
+    // following call uses the inbound approach instead of a zero bearing.
+    if (DisplacementBearing(line, at, to.m_alongM, true, bearing))
+      return bearing;
+    if (DisplacementBearing(line, at, from.m_alongM, false, bearing))
+      return bearing;
   }
   return BearingDeg(from.m_station.m_point, to.m_station.m_point);
 }
@@ -472,11 +489,12 @@ std::vector<TrainEstimate> EstimateTrains(Network const & network, std::vector<A
       fromIndex = previousIndex;
       toIndex = nextIndex;
     }
-    else if (direction != 0)
+    else
     {
       int const count = static_cast<int>(line.m_stations.size());
-      int const ahead = nextIndex + direction;
-      int const behind = nextIndex - direction;
+      int const step = direction == 0 ? 1 : direction;
+      int const ahead = nextIndex + step;
+      int const behind = nextIndex - step;
       if (ahead >= 0 && ahead < count)
       {
         fromIndex = nextIndex;

@@ -1,5 +1,7 @@
 #include "drape_frontend/metro_train_renderer.hpp"
 
+#include "drape_frontend/metro_train_heading.hpp"
+
 #include "drape_frontend/batcher_bucket.hpp"
 #include "drape_frontend/map_shape.hpp"
 #include "drape_frontend/render_state_extension.hpp"
@@ -15,9 +17,6 @@
 #include "drape/glsl_func.hpp"
 #include "drape/glsl_types.hpp"
 
-#include "geometry/mercator.hpp"
-
-#include <cmath>
 #include <vector>
 
 namespace df
@@ -84,26 +83,6 @@ dp::Color OutlineFor(dp::Color const & fill)
   return lum > 0.62f ? dp::Color(20, 20, 20) : dp::Color::White();
 }
 
-// u_azimut rotates a -Y tip onto the on-screen step of the geographic heading.
-// GtoP already includes map rotation, so a rotated map keeps the arrow on the line.
-float ScreenAzimuth(ScreenBase const & screen, m2::PointD const & mercator, float headingRad)
-{
-  ms::LatLon const ll = mercator::ToLatLon(mercator);
-  double constexpr kDegToRad = 0.017453292519943295;
-  double constexpr kStep = 1.0 / 111320.0;
-  double const cosLat = std::cos(ll.m_lat * kDegToRad);
-  double const north = std::cos(static_cast<double>(headingRad)) * kStep;
-  double const east = std::sin(static_cast<double>(headingRad)) * kStep;
-  double const dLon = cosLat == 0 ? 0 : east / cosLat;
-  m2::PointD const ahead = mercator::FromLatLon(ms::LatLon(ll.m_lat + north, ll.m_lon + dLon));
-  m2::PointD const s0 = screen.GtoP(mercator);
-  m2::PointD const s1 = screen.GtoP(ahead);
-  double const dx = s1.x - s0.x;
-  double const dy = s1.y - s0.y;
-  if (dx * dx + dy * dy < 1e-12)
-    return 0;
-  return static_cast<float>(std::atan2(dx, -dy));
-}
 }  // namespace
 
 void MetroTrainRenderer::SetTrains(std::vector<MetroTrainMarker> trains)
@@ -189,7 +168,7 @@ void MetroTrainRenderer::Render(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp
     auto const pos =
         static_cast<m2::PointF>(MapShape::ConvertToLocal(adjusted, key.GetGlobalRect().Center(), kShapeCoordScalar));
     params.m_position = glsl::vec3(pos.x, pos.y, dp::depth::kMyPositionMarkDepth);
-    params.m_azimut = ScreenAzimuth(screen, adjusted, train.m_headingRad);
+    params.m_azimut = ChevronScreenAzimuth(screen, adjusted, train.m_headingRad);
     params.m_opacity = 1.0f;
     mesh->second.Render(context, mng, params);
   }

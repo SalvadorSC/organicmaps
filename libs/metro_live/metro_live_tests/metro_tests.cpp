@@ -4,6 +4,11 @@
 #include "metro_live/parser.hpp"
 #include "metro_live/service.hpp"
 
+#include "drape_frontend/metro_train_heading.hpp"
+
+#include "geometry/mercator.hpp"
+#include "geometry/screenbase.hpp"
+
 #include "coding/file_reader.hpp"
 
 #include <algorithm>
@@ -416,6 +421,41 @@ UNIT_TEST(Estimate_RecordedFeedsIfPresent)
       sawL1 = true;
   }
   TEST(sawL1, ());
+  int off120 = 0;
+  int compared = 0;
+  for (auto const & train : trains)
+  {
+    ms::LatLon next;
+    bool found = false;
+    for (auto const & line : network.m_lines)
+    {
+      if (line.m_name != train.m_line)
+        continue;
+      for (auto const & station : line.m_stations)
+      {
+        if (station.m_station.m_name == train.m_nextStop)
+        {
+          next = station.m_station.m_point;
+          found = true;
+        }
+      }
+    }
+    if (!found)
+      continue;
+    double const east = (next.m_lon - train.m_lon) * std::cos(train.m_lat * 0.017453292519943295);
+    double const north = next.m_lat - train.m_lat;
+    if (east * east + north * north < 1e-12)
+      continue;
+    double deg = std::atan2(east, north) / 0.017453292519943295;
+    if (deg < 0)
+      deg += 360.0;
+    ++compared;
+    if (HeadingDelta(train.m_headingDeg, deg) > 120)
+      ++off120;
+  }
+  // A curve can leave the chord to the next stop. It must not point backwards.
+  TEST_GREATER(compared, 50, ());
+  TEST_EQUAL(off120, 0, ());
   // This recording has no L9/L10 departures. When those rows exist they must place.
   bool feedL9 = false;
   for (auto const & row : feed->m_rows)
@@ -466,6 +506,149 @@ UNIT_TEST(Estimate_HeadingFollowsTravel)
   TEST_EQUAL(east.size(), 1, ());
   TEST_LESS(HeadingDelta(east[0].m_headingDeg, 90.0), 15.0, (east[0].m_headingDeg));
   TEST_GREATER(east[0].m_lon, 2.1505, ());
+}
+
+// A few-metre out-and-back at a vertex used to become the arrow heading.
+UNIT_TEST(Estimate_HeadingSkipsJoinSpur)
+{
+  std::string_view constexpr kStations = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.400]},
+       "properties":{"CODI_ESTACIO":1,"NOM_ESTACIO":"South","ORDRE_ESTACIO":1,"NOM_LINIA":"L1","COLOR_LINIA":"CE1126"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.401]},
+       "properties":{"CODI_ESTACIO":2,"NOM_ESTACIO":"North","ORDRE_ESTACIO":2,"NOM_LINIA":"L1","COLOR_LINIA":"CE1126"}}
+    ]
+  })";
+  // North, then 8 m east and back. The train has arrived at North.
+  std::string_view constexpr kLines = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[2.150,41.400],[2.150,41.401],[2.1501,41.401],[2.150,41.401]]]},
+       "properties":{"NOM_LINIA":"L1","COLOR_LINIA":"CE1126","NOM_TIPUS_TRANSPORT":"METRO"}}
+    ]
+  })";
+  auto stations = metro_live::ParseStations(kStations);
+  auto lines = metro_live::ParseLines(kLines);
+  TEST(stations.has_value(), ());
+  TEST(lines.has_value(), ());
+  auto const network = metro_live::BuildNetwork(*lines, *stations);
+  auto const arrived = metro_live::EstimateTrains(network, {Row("L1", "1", "run", 2, kNow, "North")}, kNow);
+  TEST_EQUAL(arrived.size(), 1, ());
+  TEST_LESS(HeadingDelta(arrived[0].m_headingDeg, 0.0), 15.0, (arrived[0].m_headingDeg));
+
+  // Sitting on the south end of a spur that leaves the bend toward the west.
+  std::string_view constexpr kBendStations = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.400]},
+       "properties":{"CODI_ESTACIO":1,"NOM_ESTACIO":"South","ORDRE_ESTACIO":1,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.401]},
+       "properties":{"CODI_ESTACIO":2,"NOM_ESTACIO":"Bend","ORDRE_ESTACIO":2,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.152,41.401]},
+       "properties":{"CODI_ESTACIO":3,"NOM_ESTACIO":"East","ORDRE_ESTACIO":3,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}}
+    ]
+  })";
+  std::string_view constexpr kBendLines = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[2.150,41.400],[2.150,41.401],[2.1499,41.401],[2.150,41.401],[2.152,41.401]]]},
+       "properties":{"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E","NOM_TIPUS_TRANSPORT":"METRO"}}
+    ]
+  })";
+  auto bendStations = metro_live::ParseStations(kBendStations);
+  auto bendLines = metro_live::ParseLines(kBendLines);
+  TEST(bendStations.has_value(), ());
+  TEST(bendLines.has_value(), ());
+  auto const bend = metro_live::BuildNetwork(*bendLines, *bendStations);
+  // ETA covers a full segment, so the train is still at Bend, on the spur vertex.
+  auto const east = metro_live::EstimateTrains(bend, {Row("L4", "1", "run", 3, kNow + 87, "East")}, kNow);
+  TEST_EQUAL(east.size(), 1, ());
+  TEST_LESS(HeadingDelta(east[0].m_headingDeg, 90.0), 20.0, (east[0].m_headingDeg));
+  auto const west = metro_live::EstimateTrains(bend, {Row("L4", "2", "back", 1, kNow + 87, "South")}, kNow);
+  TEST_EQUAL(west.size(), 1, ());
+  TEST_LESS(HeadingDelta(west[0].m_headingDeg, 180.0), 20.0, (west[0].m_headingDeg));
+}
+
+double RadiansDelta(double a, double b)
+{
+  double constexpr kPi = 3.141592653589793;
+  double d = std::fmod(std::abs(a - b), 2.0 * kPi);
+  if (d > kPi)
+    d = 2.0 * kPi - d;
+  return d;
+}
+
+// Tip (0, -1) rotated by theta lands on (sin theta, -cos theta), Y down.
+void TipOffset(float theta, double & x, double & y)
+{
+  x = std::sin(theta);
+  y = -std::cos(theta);
+}
+
+UNIT_TEST(ChevronScreenAngle_MatchesTravel)
+{
+  std::string_view constexpr kStations = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.400]},
+       "properties":{"CODI_ESTACIO":1,"NOM_ESTACIO":"West","ORDRE_ESTACIO":1,"NOM_LINIA":"L1","COLOR_LINIA":"CE1126"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.152,41.400]},
+       "properties":{"CODI_ESTACIO":2,"NOM_ESTACIO":"East","ORDRE_ESTACIO":2,"NOM_LINIA":"L1","COLOR_LINIA":"CE1126"}}
+    ]
+  })";
+  // Stored west-to-east. The opposite direction must flip, not follow storage order.
+  std::string_view constexpr kLines = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[2.150,41.400],[2.152,41.400]]]},
+       "properties":{"NOM_LINIA":"L1","COLOR_LINIA":"CE1126","NOM_TIPUS_TRANSPORT":"METRO"}}
+    ]
+  })";
+  auto stations = metro_live::ParseStations(kStations);
+  auto lines = metro_live::ParseLines(kLines);
+  TEST(stations.has_value(), ());
+  TEST(lines.has_value(), ());
+  auto const network = metro_live::BuildNetwork(*lines, *stations);
+  auto const east = metro_live::EstimateTrains(network, {Row("L1", "1", "go", 2, kNow + 40, "East")}, kNow);
+  auto const west = metro_live::EstimateTrains(network, {Row("L1", "2", "back", 1, kNow + 40, "West")}, kNow);
+  TEST_EQUAL(east.size(), 1, ());
+  TEST_EQUAL(west.size(), 1, ());
+  TEST_LESS(HeadingDelta(east[0].m_headingDeg, 90.0), 5.0, (east[0].m_headingDeg));
+  TEST_LESS(HeadingDelta(west[0].m_headingDeg, 270.0), 5.0, (west[0].m_headingDeg));
+
+  double constexpr kPi = 3.141592653589793;
+  double constexpr kFew = 5.0 * kPi / 180.0;
+  ScreenBase screen;
+  screen.OnSize(0, 0, 1000, 2000);
+  m2::PointD const merc = mercator::FromLatLon(east[0].m_lat, east[0].m_lon);
+  screen.SetFromParams(merc, 0.0, 1e-5);
+  auto const headingRad = [](double deg) { return static_cast<float>(deg * kPi / 180.0); };
+  float const eastAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(east[0].m_headingDeg));
+  float const westAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(west[0].m_headingDeg));
+  // North-up: east travel puts the tip to the right, west travel to the left.
+  TEST_LESS(RadiansDelta(eastAngle, kPi / 2.0), kFew, (eastAngle));
+  TEST_LESS(RadiansDelta(westAngle, -kPi / 2.0), kFew, (westAngle));
+  TEST_LESS(RadiansDelta(eastAngle - westAngle, kPi), kFew, (eastAngle, westAngle));
+
+  screen.SetAngle(kPi / 2.0);
+  float const rotated = df::ChevronScreenAzimuth(screen, merc, headingRad(east[0].m_headingDeg));
+  ms::LatLon const ll(east[0].m_lat, east[0].m_lon);
+  double const cosLat = std::cos(ll.m_lat * kPi / 180.0);
+  m2::PointD const ahead = mercator::FromLatLon(ms::LatLon(ll.m_lat, ll.m_lon + (1.0 / 111320.0) / cosLat));
+  m2::PointD const s0 = screen.GtoP(merc);
+  m2::PointD const s1 = screen.GtoP(ahead);
+  double const dx = s1.x - s0.x;
+  double const dy = s1.y - s0.y;
+  double tx = 0;
+  double ty = 0;
+  TipOffset(rotated, tx, ty);
+  double const len = std::sqrt(dx * dx + dy * dy);
+  TEST_GREATER(len, 0.1, ());
+  double const dot = (tx * dx + ty * dy) / len;
+  TEST_GREATER(dot, std::cos(kFew), (rotated, dot));
+  // The map angle moved the tip. It is not left at the north-up value.
+  TEST_GREATER(RadiansDelta(rotated, eastAngle), kPi / 4.0, (rotated, eastAngle));
 }
 
 }  // namespace metro_tests
