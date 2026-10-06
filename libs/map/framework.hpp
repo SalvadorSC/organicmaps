@@ -535,9 +535,10 @@ public:
   bool GetDistanceAndAzimut(m2::PointD const & point, double lat, double lon, double north,
                             platform::Distance & distance, double & azimut);
 
-  /// @name Screen pixel to geo point conversions.
+  /// @name Screen pixel and geo point conversions.
   /// @{
   m2::PointD PtoG(m2::PointD const & p) const;
+  m2::PointD GtoP(m2::PointD const & p) const;
   m2::PointD P3dtoG(m2::PointD const & p) const;
   /// @}
 

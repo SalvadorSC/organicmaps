@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="bcn_transport_title">BCN Transport</string>
-  <string name="bcn_transport_summary">Bicicletes compartides i arribades d\'autobús a l\'àrea de Barcelona.</string>
+  <string name="bcn_transport_summary">Bicicletes compartides, arribades d\'autobús i metro estimat a l\'àrea de Barcelona.</string>
   <string name="bus_arrivals_title">Arribades d\'autobús en directe</string>
   <string name="bus_arrivals_summary">En obrir una parada d\'autobús a l\'àrea de Barcelona, mostra els propers busos. Descarrega les dades públiques de l\'AMB i, si afegiu una clau de TMB, les arribades dels busos urbans. Respecta la configuració de dades mòbils. Desactivat per defecte. La clau es queda en aquest dispositiu.</string>
   <string name="bcn_transport_tmb_app_id">Identificador de l\'app TMB</string>
@@ -12,4 +12,9 @@
   <string name="bus_arrival_imminent">Ara</string>
   <string name="bus_arrival_minutes">%d min</string>
   <string name="bus_arrivals_no_data">Sense dades en directe</string>
+  <string name="metro_live_title">Metro en directe</string>
+  <string name="metro_live_summary">Mostra aproximadament on és cada tren del metro de Barcelona, amb el color de la línia. Cal l\'identificador i la clau de TMB d\'aquesta pantalla. Respecta la configuració de dades mòbils. Desactivat per defecte. Les posicions són una estimació, no GPS.</string>
+  <string name="metro_estimated">Estimació</string>
+  <string name="metro_needs_key">Afegiu l\'identificador i la clau de TMB a BCN Transport per veure els trens.</string>
+  <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
 </resources>

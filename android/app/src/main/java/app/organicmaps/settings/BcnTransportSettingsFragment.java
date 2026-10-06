@@ -11,6 +11,7 @@ import androidx.preference.TwoStatePreference;
 import app.organicmaps.R;
 import app.organicmaps.sdk.bike_share.BikeShare;
 import app.organicmaps.sdk.bus_live.BusLive;
+import app.organicmaps.sdk.metro_live.MetroLive;
 
 public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
 {
@@ -36,6 +37,13 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     busArrivals.setChecked(BusLive.isEnabled());
     busArrivals.setOnPreferenceChangeListener((preference, newValue) -> {
       BusLive.setEnabled((Boolean) newValue);
+      return true;
+    });
+
+    final TwoStatePreference metroLive = getPreference(getString(R.string.pref_metro_live));
+    metroLive.setChecked(MetroLive.isEnabled());
+    metroLive.setOnPreferenceChangeListener((preference, newValue) -> {
+      MetroLive.setEnabled((Boolean) newValue);
       return true;
     });
 

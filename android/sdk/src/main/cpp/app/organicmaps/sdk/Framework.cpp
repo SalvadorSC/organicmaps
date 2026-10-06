@@ -1156,6 +1156,18 @@ JNIEXPORT void Java_app_organicmaps_sdk_Framework_nativePokeSearchInViewport(JNI
   frm()->GetSearchAPI().PokeSearchInViewport();
 }
 
+JNIEXPORT jdoubleArray Java_app_organicmaps_sdk_Framework_nativeLatLonToScreen(JNIEnv * env, jclass, jdouble lat,
+                                                                               jdouble lon)
+{
+  if (!g_framework)
+    return nullptr;
+  m2::PointD const px = frm()->GtoP(mercator::FromLatLon(lat, lon));
+  double xy[] = {px.x, px.y};
+  jdoubleArray out = env->NewDoubleArray(2);
+  env->SetDoubleArrayRegion(out, 0, 2, xy);
+  return out;
+}
+
 JNIEXPORT jdoubleArray Java_app_organicmaps_sdk_Framework_nativeGetScreenRectCenter(JNIEnv * env, jclass)
 {
   m2::PointD const center = frm()->GetViewportCenter();

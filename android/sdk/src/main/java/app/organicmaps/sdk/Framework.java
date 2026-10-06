@@ -95,6 +95,11 @@ public class Framework
 
   public static native void nativePokeSearchInViewport();
 
+  /** Pixel on the map surface for a WGS84 point. Y grows downward, matching the map view. */
+  @Nullable
+  @Size(2)
+  public static native double[] nativeLatLonToScreen(double lat, double lon);
+
   @Size(2)
   public static native double[] nativeGetScreenRectCenter();
 

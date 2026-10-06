@@ -1719,6 +1719,11 @@ m2::PointD Framework::PtoG(m2::PointD const & p) const
   return pt;
 }
 
+m2::PointD Framework::GtoP(m2::PointD const & p) const
+{
+  return m_currentModelView.GtoP(p);
+}
+
 m2::PointD Framework::P3dtoG(m2::PointD const & p) const
 {
   auto pt = m_currentModelView.PtoG(m_currentModelView.P3dtoP(p));

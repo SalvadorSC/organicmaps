@@ -16,6 +16,14 @@
       android:layout_width="match_parent"
       android:layout_height="match_parent" />
 
+    <app.organicmaps.widget.MetroTrainOverlay
+      android:id="@+id/metro_overlay"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      android:clickable="false"
+      android:focusable="false"
+      android:visibility="gone" />
+
     <include
       android:id="@+id/onmap_downloader"
       layout="@layout/onmap_downloader"

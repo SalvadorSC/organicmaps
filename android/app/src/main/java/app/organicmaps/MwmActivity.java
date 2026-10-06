@@ -121,6 +121,7 @@ import app.organicmaps.util.Utils;
 import app.organicmaps.util.WindowInsetUtils.BaselinePaddingInsetsListener;
 import app.organicmaps.util.bottomsheet.MenuBottomSheetFragment;
 import app.organicmaps.util.bottomsheet.MenuBottomSheetItem;
+import app.organicmaps.widget.MetroTrainOverlay;
 import app.organicmaps.widget.placepage.PlacePageController;
 import app.organicmaps.widget.placepage.PlacePageViewModel;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
@@ -163,6 +164,8 @@ public class MwmActivity extends BaseMwmFragmentActivity
   private NavigationController mNavigationController;
   @Nullable
   private OnmapDownloader mOnmapDownloader;
+  @Nullable
+  private MetroTrainOverlay mMetroOverlay;
 
   private String mDonatesUrl;
 
@@ -626,6 +629,7 @@ public class MwmActivity extends BaseMwmFragmentActivity
         this, v -> onSettingsOptionSelected(), v -> openVoiceInstructionsSettings(), this::updateBottomWidgetsOffset);
     // TrafficManager.INSTANCE.attach(mNavigationController);
     initOnmapDownloader();
+    mMetroOverlay = findViewById(R.id.metro_overlay);
     initPositionChooser();
   }
 
@@ -1016,6 +1020,8 @@ public class MwmActivity extends BaseMwmFragmentActivity
       exitFullscreen();
     if (mOnmapDownloader != null)
       mOnmapDownloader.onResume();
+    if (mMetroOverlay != null)
+      mMetroOverlay.onHostResume();
 
     mNavigationController.refresh();
     refreshLightStatusBar();
@@ -1035,6 +1041,8 @@ public class MwmActivity extends BaseMwmFragmentActivity
   {
     if (mOnmapDownloader != null)
       mOnmapDownloader.onPause();
+    if (mMetroOverlay != null)
+      mMetroOverlay.onHostPause();
     MwmApplication.from(this).getSensorHelper().removeListener(this);
     dismissLocationErrorDialog();
     dismissAlertDialog();
