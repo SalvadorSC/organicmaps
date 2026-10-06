@@ -1,7 +1,5 @@
 #include "drape_frontend/metro_train_renderer.hpp"
 
-#include "drape_frontend/metro_train_heading.hpp"
-
 #include "drape_frontend/batcher_bucket.hpp"
 #include "drape_frontend/map_shape.hpp"
 #include "drape_frontend/render_state_extension.hpp"
@@ -17,6 +15,7 @@
 #include "drape/glsl_func.hpp"
 #include "drape/glsl_types.hpp"
 
+#include <cmath>
 #include <vector>
 
 namespace df
@@ -51,29 +50,26 @@ dp::BindingInfo MarkerBinding()
   return info;
 }
 
-// Tip at -Y, which is north on a north-up screen. The shader rotates this by u_azimut.
-void AppendArrow(std::vector<MetroArrowVertex> & verts, glsl::vec2 const & tex, float vs, float grow)
+// Round marker. Azimuth stays 0; the disc does not encode a heading.
+void AppendDisc(std::vector<MetroArrowVertex> & verts, glsl::vec2 const & tex, float vs, float grow)
 {
-  float const s = vs;
-  // A short chevron: readable at ~20 dp, pointed end is the direction of travel.
-  glsl::vec2 const tip(0.f, (-14.f - grow) * s);
-  glsl::vec2 const right((8.f + grow) * s, (-1.f + grow * 0.2f) * s);
-  glsl::vec2 const tailR((4.5f + grow * 0.6f) * s, (11.f + grow) * s);
-  glsl::vec2 const tailL((-4.5f - grow * 0.6f) * s, (11.f + grow) * s);
-  glsl::vec2 const left((-8.f - grow) * s, (-1.f + grow * 0.2f) * s);
-  glsl::vec2 const mid(0.f, (2.f) * s);
-  glsl::vec2 const fan[] = {tip, right, tailR, tailL, left};
-  for (int i = 0; i < 5; ++i)
+  float const radius = (7.5f + grow) * vs;
+  constexpr int kSegments = 16;
+  constexpr float kPi = 3.14159265f;
+  glsl::vec2 const center(0.f, 0.f);
+  for (int i = 0; i < kSegments; ++i)
   {
-    glsl::vec2 const a = fan[i];
-    glsl::vec2 const b = fan[(i + 1) % 5];
+    float const a0 = static_cast<float>(i) * (2.f * kPi) / kSegments;
+    float const a1 = static_cast<float>(i + 1) * (2.f * kPi) / kSegments;
+    glsl::vec2 const p0(std::cos(a0) * radius, std::sin(a0) * radius);
+    glsl::vec2 const p1(std::cos(a1) * radius, std::sin(a1) * radius);
     // Both windings: the pipeline culls back faces, and projection flips Y.
-    verts.emplace_back(mid, tex);
-    verts.emplace_back(a, tex);
-    verts.emplace_back(b, tex);
-    verts.emplace_back(mid, tex);
-    verts.emplace_back(b, tex);
-    verts.emplace_back(a, tex);
+    verts.emplace_back(center, tex);
+    verts.emplace_back(p0, tex);
+    verts.emplace_back(p1, tex);
+    verts.emplace_back(center, tex);
+    verts.emplace_back(p1, tex);
+    verts.emplace_back(p0, tex);
   }
 }
 
@@ -121,9 +117,9 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
     m2::PointF const outlineTex = outlineRegion.GetTexRect().Center();
 
     std::vector<MetroArrowVertex> verts;
-    verts.reserve(60);
-    AppendArrow(verts, glsl::ToVec2(outlineTex), vs, 2.6f);
-    AppendArrow(verts, glsl::ToVec2(fillTex), vs, 0.f);
+    verts.reserve(16 * 6 * 2);
+    AppendDisc(verts, glsl::ToVec2(outlineTex), vs, 2.6f);
+    AppendDisc(verts, glsl::ToVec2(fillTex), vs, 0.f);
 
     auto state = CreateRenderState(gpu::Program::MyPosition, DepthLayer::OverlayLayer);
     state.SetDepthTestEnabled(false);
@@ -168,7 +164,7 @@ void MetroTrainRenderer::Render(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp
     auto const pos =
         static_cast<m2::PointF>(MapShape::ConvertToLocal(adjusted, key.GetGlobalRect().Center(), kShapeCoordScalar));
     params.m_position = glsl::vec3(pos.x, pos.y, dp::depth::kMyPositionMarkDepth);
-    params.m_azimut = ChevronScreenAzimuth(screen, adjusted, train.m_headingRad);
+    params.m_azimut = 0.f;
     params.m_opacity = 1.0f;
     mesh->second.Render(context, mng, params);
   }

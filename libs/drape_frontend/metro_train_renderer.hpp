@@ -17,9 +17,9 @@
 
 namespace df
 {
-// Draws train arrows in the frontend render pass, with the same ScreenBase as the
+// Draws train markers in the frontend render pass, with the same ScreenBase as the
 // map. An Android view reprojects a viewport that the render thread publishes a
-// frame later, so markers trail pans and flings. These arrows cannot.
+// frame later, so markers trail pans and flings. These markers cannot.
 class MetroTrainRenderer
 {
 public:

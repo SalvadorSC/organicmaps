@@ -6,7 +6,7 @@
 
 namespace df
 {
-// One estimated train. Heading is radians, clockwise from north (0 is north).
+// One estimated metro train. The marker is a round dot in m_color; heading is unused.
 struct MetroTrainMarker
 {
   m2::PointD m_mercator;
