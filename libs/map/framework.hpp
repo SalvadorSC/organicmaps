@@ -181,6 +181,13 @@ protected:
   SearchMarks m_searchMarks;
 
   df::DrapeApi m_drapeApi;
+  struct MetroTrainHit
+  {
+    m2::PointD m_mercator;
+    std::string m_key;
+  };
+  std::vector<MetroTrainHit> m_metroTrainHits;
+  std::function<void(std::string const &)> m_onMetroTrainTap;
 
   bool m_isRenderingEnabled;
 
@@ -540,6 +547,10 @@ public:
   m2::PointD PtoG(m2::PointD const & p) const;
   m2::PointD GtoP(m2::PointD const & p) const;
   m2::PointD P3dtoG(m2::PointD const & p) const;
+
+  // Estimated metro arrows. keys[i] is the tap id for markers[i]. Empty clears the layer.
+  void SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys);
+  void SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler);
   /// @}
 
   /// Show all model by it's world rect.

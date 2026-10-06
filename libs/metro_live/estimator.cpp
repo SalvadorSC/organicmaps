@@ -192,6 +192,55 @@ int64_t SegmentSeconds(std::vector<Hit> const & chain)
     return kTypicalSegmentSec;
   return gap;
 }
+
+// Clockwise from north. A zero-length step has no direction.
+double BearingDeg(ms::LatLon const & from, ms::LatLon const & to)
+{
+  double constexpr kDegToRad = 0.017453292519943295;
+  double const cosLat = std::cos(from.m_lat * kDegToRad);
+  double const east = (to.m_lon - from.m_lon) * cosLat;
+  double const north = to.m_lat - from.m_lat;
+  if (east * east + north * north < 1e-16)
+    return 0;
+  double deg = std::atan2(east, north) / kDegToRad;
+  if (deg < 0)
+    deg += 360.0;
+  return deg;
+}
+
+size_t SegmentIndex(std::vector<double> const & alongM, double at, bool forward)
+{
+  if (alongM.size() < 2)
+    return 0;
+  size_t i = 0;
+  while (i + 2 < alongM.size() && alongM[i + 1] < at)
+    ++i;
+  // On a vertex, keep the segment that continues in the direction of travel.
+  if (forward && i + 2 < alongM.size() && at >= alongM[i + 1])
+    ++i;
+  if (!forward && i > 0 && at <= alongM[i])
+    --i;
+  return i;
+}
+
+double HeadingDeg(IndexedLine const & line, int fromIndex, int toIndex, double along)
+{
+  if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex || fromIndex >= static_cast<int>(line.m_stations.size()) ||
+      toIndex >= static_cast<int>(line.m_stations.size()))
+    return 0;
+  auto const & from = line.m_stations[static_cast<size_t>(fromIndex)];
+  auto const & to = line.m_stations[static_cast<size_t>(toIndex)];
+  if (from.m_alongM >= 0 && to.m_alongM >= 0 && line.m_shape.size() >= 2 && line.m_alongM.size() == line.m_shape.size())
+  {
+    bool const forward = to.m_alongM >= from.m_alongM;
+    double const at = std::clamp(along, std::min(from.m_alongM, to.m_alongM), std::max(from.m_alongM, to.m_alongM));
+    size_t const i = SegmentIndex(line.m_alongM, at, forward);
+    if (i + 1 < line.m_shape.size())
+      return forward ? BearingDeg(line.m_shape[i], line.m_shape[i + 1])
+                     : BearingDeg(line.m_shape[i + 1], line.m_shape[i]);
+  }
+  return BearingDeg(from.m_station.m_point, to.m_station.m_point);
+}
 }  // namespace
 
 Network BuildNetwork(std::vector<LinePath> const & lines, std::vector<Station> const & stations)
@@ -416,6 +465,42 @@ std::vector<TrainEstimate> EstimateTrains(Network const & network, std::vector<A
                       line.m_stations[static_cast<size_t>(nextIndex)], progress);
     train.m_lat = point.m_lat;
     train.m_lon = point.m_lon;
+    int fromIndex = -1;
+    int toIndex = -1;
+    if (!onPlatform)
+    {
+      fromIndex = previousIndex;
+      toIndex = nextIndex;
+    }
+    else if (direction != 0)
+    {
+      int const count = static_cast<int>(line.m_stations.size());
+      int const ahead = nextIndex + direction;
+      int const behind = nextIndex - direction;
+      if (ahead >= 0 && ahead < count)
+      {
+        fromIndex = nextIndex;
+        toIndex = ahead;
+      }
+      else if (behind >= 0 && behind < count)
+      {
+        fromIndex = behind;
+        toIndex = nextIndex;
+      }
+    }
+    double along = 0;
+    if (fromIndex >= 0 && toIndex >= 0)
+    {
+      if (!onPlatform)
+      {
+        auto const & from = line.m_stations[static_cast<size_t>(fromIndex)];
+        auto const & to = line.m_stations[static_cast<size_t>(toIndex)];
+        along = from.m_alongM + (to.m_alongM - from.m_alongM) * progress;
+      }
+      else
+        along = line.m_stations[static_cast<size_t>(nextIndex)].m_alongM;
+    }
+    train.m_headingDeg = HeadingDeg(line, fromIndex, toIndex, along);
     trains.push_back(std::move(train));
     (void)key;
   }

@@ -170,6 +170,12 @@ void DrapeEngine::SetVisibleViewport(m2::RectD const & rect) const
                                   MessagePriority::Normal);
 }
 
+void DrapeEngine::SetMetroTrains(std::vector<MetroTrainMarker> trains)
+{
+  m_threadCommutator->PostMessage(ThreadsCommutator::RenderThread,
+                                  make_unique_dp<UpdateMetroTrainsMessage>(std::move(trains)), MessagePriority::Normal);
+}
+
 void DrapeEngine::Invalidate()
 {
   m_threadCommutator->PostMessage(ThreadsCommutator::RenderThread, make_unique_dp<InvalidateMessage>(),

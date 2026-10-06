@@ -6,6 +6,7 @@
 #include "drape_frontend/gps_track_renderer.hpp"
 #include "drape_frontend/gui/layer_render.hpp"
 #include "drape_frontend/map_data_provider.hpp"
+#include "drape_frontend/metro_train_renderer.hpp"
 #include "drape_frontend/my_position_controller.hpp"
 #include "drape_frontend/overlays_tracker.hpp"
 #include "drape_frontend/postprocess_renderer.hpp"
@@ -319,6 +320,7 @@ private:
   drape_ptr<gui::LayerRenderer> m_guiRenderer;
   gui::TWidgetsLayoutInfo m_lastWidgetsLayout;
   drape_ptr<MyPositionController> m_myPositionController;
+  MetroTrainRenderer m_metroTrains;
 
   drape_ptr<SelectionShape> m_selectionShape;
   struct SelectionTrackInfo

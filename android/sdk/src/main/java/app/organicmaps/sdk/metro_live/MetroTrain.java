@@ -10,4 +10,6 @@ public final class MetroTrain
   public String mKey;
   public double mLat;
   public double mLon;
+  /** Clockwise degrees from north. 0 is north. */
+  public double mHeadingDeg;
 }

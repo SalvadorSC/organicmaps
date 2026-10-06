@@ -49,6 +49,8 @@ struct TrainEstimate
   std::string m_key;
   double m_lat = 0;
   double m_lon = 0;
+  // Clockwise degrees from north along the line toward the next stop. 0 is north.
+  double m_headingDeg = 0;
 };
 
 struct LineSummary

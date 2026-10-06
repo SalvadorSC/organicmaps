@@ -8,66 +8,70 @@ import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
+import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewConfiguration;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import app.organicmaps.R;
 import app.organicmaps.sdk.Framework;
-import app.organicmaps.sdk.metro_live.MetroLine;
 import app.organicmaps.sdk.metro_live.MetroLive;
 import app.organicmaps.sdk.metro_live.MetroSnapshot;
 import app.organicmaps.sdk.metro_live.MetroTrain;
 import app.organicmaps.sdk.routing.RoutingController;
 import app.organicmaps.sdk.util.NetworkPolicy;
+import app.organicmaps.settings.MetroLineSelection;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Estimated metro trains drawn over the map. The view does not use Drape: Organic Maps has no
- * moving-marker layer, and a user mark would rebuild the bookmark scene on every frame. Dots are
- * reprojected from the current screen matrix instead.
+ * Estimated label and the tapped-train caption. The arrows themselves are drawn in the map pass,
+ * so they stay on the line during a pan, fling, zoom, rotate, or tilt.
  */
 public class MetroTrainOverlay extends LinearLayout
 {
   private static final long REFRESH_MS = 20000;
-  private static final long FRAME_MS = 80;
+
+  @Nullable
+  private static WeakReference<MetroTrainOverlay> sInstance;
 
   private final Handler mHandler = new Handler(Looper.getMainLooper());
   private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
   private final AtomicBoolean mBusy = new AtomicBoolean();
-  private final Set<String> mDisabled = new HashSet<>();
-  private final Map<String, Motion> mMotion = new HashMap<>();
-  private final List<Dot> mDots = new ArrayList<>();
-  private final Paint mFill = new Paint(Paint.ANTI_ALIAS_FLAG);
-  private final Paint mStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Map<String, MetroTrain> mTrains = new HashMap<>();
   private final Paint mLabelBg = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint mLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final RectF mLabelBox = new RectF();
 
-  private HorizontalScrollView mChipsScroll;
-  private LinearLayout mChips;
   private TextView mBanner;
   private boolean mRunning;
   private boolean mNeedsKey;
   @Nullable
   private String mSelectedKey;
-  private float mDownX;
-  private float mDownY;
-  private boolean mTrackingTrain;
-  private final int mTouchSlop;
+  @Nullable
+  private MetroSnapshot mSnapshot;
+  private boolean mCaptionScheduled;
+
+  private final Choreographer.FrameCallback mCaptionFrame = new Choreographer.FrameCallback()
+  {
+    @Override
+    public void doFrame(long frameTimeNanos)
+    {
+      mCaptionScheduled = false;
+      if (!mRunning || mSelectedKey == null)
+        return;
+      invalidate();
+      scheduleCaption();
+    }
+  };
 
   private final Runnable mTick = new Runnable()
   {
@@ -81,28 +85,12 @@ public class MetroTrainOverlay extends LinearLayout
     }
   };
 
-  private final Runnable mFrame = new Runnable()
-  {
-    @Override
-    public void run()
-    {
-      if (!mRunning)
-        return;
-      invalidate();
-      mHandler.postDelayed(this, FRAME_MS);
-    }
-  };
-
   public MetroTrainOverlay(Context context, @Nullable AttributeSet attrs)
   {
     super(context, attrs);
     setOrientation(VERTICAL);
-    setGravity(Gravity.BOTTOM);
-    mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+    setGravity(Gravity.TOP);
     float density = getResources().getDisplayMetrics().density;
-    mStroke.setStyle(Paint.Style.STROKE);
-    mStroke.setStrokeWidth(2f * density);
-    mStroke.setColor(Color.WHITE);
     mLabelBg.setColor(0xE0000000);
     mLabel.setColor(Color.WHITE);
     mLabel.setTextSize(13f * density);
@@ -115,52 +103,61 @@ public class MetroTrainOverlay extends LinearLayout
     LayoutParams bannerParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
     bannerParams.gravity = Gravity.CENTER_HORIZONTAL;
     bannerParams.topMargin = (int) (48 * density);
-    bannerParams.bottomMargin = (int) (8 * density);
     addView(mBanner, bannerParams);
-
-    View spacer = new View(context);
-    addView(spacer, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
-
-    mChips = new LinearLayout(context);
-    mChips.setOrientation(HORIZONTAL);
-    mChipsScroll = new HorizontalScrollView(context);
-    mChipsScroll.setHorizontalScrollBarEnabled(false);
-    mChipsScroll.addView(mChips);
-    LayoutParams chipsParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-    chipsParams.bottomMargin = (int) (88 * density);
-    chipsParams.leftMargin = pad;
-    chipsParams.rightMargin = pad;
-    addView(mChipsScroll, chipsParams);
     setWillNotDraw(false);
+  }
+
+  /** Called from the map tap path. Empty clears the caption. */
+  public static void onTrainTapped(@Nullable String key)
+  {
+    MetroTrainOverlay overlay = sInstance == null ? null : sInstance.get();
+    if (overlay == null)
+      return;
+    overlay.mHandler.post(() -> overlay.showTrain(key));
   }
 
   public void onHostResume()
   {
+    sInstance = new WeakReference<>(this);
+    MetroLive.setTapListener(true);
     mRunning = true;
     refreshVisibility();
     mHandler.removeCallbacks(mTick);
-    mHandler.removeCallbacks(mFrame);
     if (getVisibility() == VISIBLE)
     {
+      pushTrains();
       mHandler.post(mTick);
-      mHandler.post(mFrame);
     }
+    else
+      MetroLive.setTrains(null);
   }
 
   public void onHostPause()
   {
     mRunning = false;
     mHandler.removeCallbacks(mTick);
-    mHandler.removeCallbacks(mFrame);
+    Choreographer.getInstance().removeFrameCallback(mCaptionFrame);
+    mCaptionScheduled = false;
     mBusy.set(false);
   }
 
   @Override
   protected void onDetachedFromWindow()
   {
+    if (sInstance != null && sInstance.get() == this)
+      sInstance = null;
     onHostPause();
+    MetroLive.setTrains(null);
+    MetroLive.setTapListener(false);
     mExecutor.shutdownNow();
     super.onDetachedFromWindow();
+  }
+
+  @Override
+  public boolean dispatchTouchEvent(MotionEvent event)
+  {
+    // The map owns gestures. Train taps are hit-tested in mercator.
+    return false;
   }
 
   private void refreshVisibility()
@@ -175,7 +172,10 @@ public class MetroTrainOverlay extends LinearLayout
       return;
     refreshVisibility();
     if (getVisibility() != VISIBLE)
+    {
+      MetroLive.setTrains(null);
       return;
+    }
     if (!NetworkPolicy.getCurrentNetworkUsageStatus())
     {
       clearTrains(false);
@@ -206,13 +206,14 @@ public class MetroTrainOverlay extends LinearLayout
   private void clearTrains(boolean needsKey)
   {
     mNeedsKey = needsKey;
-    mMotion.clear();
+    mSnapshot = null;
+    mTrains.clear();
     mSelectedKey = null;
     if (needsKey)
       mBanner.setText(R.string.metro_needs_key);
     else
       mBanner.setText(R.string.metro_estimated);
-    mChipsScroll.setVisibility(needsKey ? GONE : VISIBLE);
+    MetroLive.setTrains(null);
     invalidate();
   }
 
@@ -221,222 +222,86 @@ public class MetroTrainOverlay extends LinearLayout
     if (snapshot == null || !snapshot.mEnabled)
     {
       setVisibility(GONE);
+      MetroLive.setTrains(null);
       return;
     }
     if (snapshot.mNeedsKey)
     {
       clearTrains(true);
-      rebuildChips(snapshot.mLines);
       return;
     }
     mNeedsKey = false;
+    mSnapshot = snapshot;
     mBanner.setText(R.string.metro_estimated);
-    mChipsScroll.setVisibility(VISIBLE);
-    rebuildChips(snapshot.mLines);
-    Map<String, Motion> next = new HashMap<>();
-    if (snapshot.mTrains != null)
+    pushTrains();
+  }
+
+  private void pushTrains()
+  {
+    mTrains.clear();
+    List<MetroTrain> shown = new ArrayList<>();
+    if (mSnapshot != null && mSnapshot.mTrains != null && getVisibility() == VISIBLE)
     {
-      for (MetroTrain train : snapshot.mTrains)
+      for (MetroTrain train : mSnapshot.mTrains)
       {
         if (train == null || train.mKey == null)
           continue;
-        // A lat/lon chord between polls cuts across the subway curve (hundreds of
-        // metres on L3/L4 through Eixample). Show the estimated point directly.
-        Motion motion = new Motion();
-        motion.mTrain = train;
-        motion.mLat = train.mLat;
-        motion.mLon = train.mLon;
-        next.put(train.mKey, motion);
+        if (train.mLine != null && !MetroLineSelection.isShown(getContext(), train.mLine))
+          continue;
+        shown.add(train);
+        mTrains.put(train.mKey, train);
       }
     }
-    if (mSelectedKey != null && !next.containsKey(mSelectedKey))
+    if (mSelectedKey != null && !mTrains.containsKey(mSelectedKey))
       mSelectedKey = null;
-    mMotion.clear();
-    mMotion.putAll(next);
+    MetroLive.setTrains(shown.toArray(new MetroTrain[0]));
     invalidate();
+    scheduleCaption();
   }
 
-  private void rebuildChips(@Nullable MetroLine[] lines)
+  private void showTrain(@Nullable String key)
   {
-    if (lines == null)
+    if (!mRunning)
       return;
-    StringBuilder signature = new StringBuilder();
-    for (MetroLine line : lines)
-      if (line != null && line.mName != null)
-        signature.append(line.mName).append('|').append(line.mColor).append(';');
-    if (signature.toString().contentEquals(mChips.getTag() == null ? "" : String.valueOf(mChips.getTag())))
+    if (key == null || key.isEmpty() || !mTrains.containsKey(key))
+      mSelectedKey = null;
+    else if (key.equals(mSelectedKey))
+      mSelectedKey = null;
+    else
+      mSelectedKey = key;
+    invalidate();
+    scheduleCaption();
+  }
+
+  private void scheduleCaption()
+  {
+    if (mSelectedKey == null || mCaptionScheduled)
       return;
-    mChips.setTag(signature.toString());
-    mChips.removeAllViews();
-    float density = getResources().getDisplayMetrics().density;
-    int pad = (int) (10 * density);
-    for (MetroLine line : lines)
-    {
-      if (line == null || line.mName == null)
-        continue;
-      TextView chip = new TextView(getContext());
-      chip.setText(line.mName);
-      chip.setPadding(pad, pad / 2, pad, pad / 2);
-      int color = parseColor(line.mColor);
-      chip.setBackgroundColor(color);
-      chip.setTextColor(labelColor(color));
-      chip.setAlpha(mDisabled.contains(line.mName) ? 0.35f : 1f);
-      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-      params.rightMargin = (int) (6 * density);
-      chip.setOnClickListener(v -> {
-        if (mDisabled.contains(line.mName))
-          mDisabled.remove(line.mName);
-        else
-          mDisabled.add(line.mName);
-        chip.setAlpha(mDisabled.contains(line.mName) ? 0.35f : 1f);
-        invalidate();
-      });
-      mChips.addView(chip, params);
-    }
+    mCaptionScheduled = true;
+    Choreographer.getInstance().postFrameCallback(mCaptionFrame);
   }
 
   @Override
-  public boolean dispatchTouchEvent(MotionEvent event)
+  protected void dispatchDraw(Canvas canvas)
   {
-    if (super.dispatchTouchEvent(event))
-      return true;
-    return onTrainTouch(event);
-  }
-
-  private boolean onTrainTouch(MotionEvent event)
-  {
-    if (mNeedsKey)
-      return false;
-    float x = event.getX();
-    float y = event.getY();
-    if (event.getAction() == MotionEvent.ACTION_DOWN)
-    {
-      mTrackingTrain = hit(x, y) != null;
-      mDownX = x;
-      mDownY = y;
-      return mTrackingTrain;
-    }
-    if (!mTrackingTrain)
-      return false;
-    if (event.getAction() == MotionEvent.ACTION_MOVE)
-    {
-      if (Math.hypot(x - mDownX, y - mDownY) > mTouchSlop)
-        mTrackingTrain = false;
-      return mTrackingTrain;
-    }
-    if (event.getAction() == MotionEvent.ACTION_UP)
-    {
-      Dot dot = hit(x, y);
-      mSelectedKey = dot == null ? null : dot.mKey;
-      mTrackingTrain = false;
-      invalidate();
-      return true;
-    }
-    mTrackingTrain = false;
-    return false;
-  }
-
-  @Nullable
-  private Dot hit(float x, float y)
-  {
-    float radius = 28f * getResources().getDisplayMetrics().density;
-    Dot best = null;
-    float bestDist = radius;
-    for (Dot dot : mDots)
-    {
-      float dist = (float) Math.hypot(x - dot.mX, y - dot.mY);
-      if (dist <= bestDist)
-      {
-        best = dot;
-        bestDist = dist;
-      }
-    }
-    return best;
-  }
-
-  @Override
-  protected void onDraw(Canvas canvas)
-  {
-    super.onDraw(canvas);
-    mDots.clear();
-    if (mNeedsKey || mMotion.isEmpty())
+    super.dispatchDraw(canvas);
+    if (mNeedsKey || mSelectedKey == null)
       return;
-    float radius = 8f * getResources().getDisplayMetrics().density;
-    Dot selected = null;
-    for (Motion motion : mMotion.values())
-    {
-      MetroTrain train = motion.mTrain;
-      if (train.mLine != null && mDisabled.contains(train.mLine))
-        continue;
-      double[] px = Framework.nativeLatLonToScreen(motion.mLat, motion.mLon);
-      if (px == null || px.length < 2)
-        continue;
-      if (px[0] < -radius || px[1] < -radius || px[0] > getWidth() + radius || px[1] > getHeight() + radius)
-        continue;
-      Dot dot = new Dot();
-      dot.mX = (float) px[0];
-      dot.mY = (float) px[1];
-      dot.mKey = train.mKey;
-      dot.mTrain = train;
-      mDots.add(dot);
-      mFill.setColor(parseColor(train.mColor));
-      canvas.drawCircle(dot.mX, dot.mY, radius, mFill);
-      canvas.drawCircle(dot.mX, dot.mY, radius, mStroke);
-      if (train.mKey != null && train.mKey.equals(mSelectedKey))
-        selected = dot;
-    }
-    if (selected != null)
-      drawCaption(canvas, selected);
-  }
-
-  private void drawCaption(Canvas canvas, Dot dot)
-  {
-    String destination = dot.mTrain.mDestination == null ? "" : dot.mTrain.mDestination;
-    String next = dot.mTrain.mNextStop == null ? "" : dot.mTrain.mNextStop;
-    String text = getContext().getString(R.string.metro_train_caption, dot.mTrain.mLine, destination, next);
+    MetroTrain train = mTrains.get(mSelectedKey);
+    if (train == null)
+      return;
+    double[] px = Framework.nativeLatLonToScreen(train.mLat, train.mLon);
+    if (px == null || px.length < 2)
+      return;
+    String destination = train.mDestination == null ? "" : train.mDestination;
+    String next = train.mNextStop == null ? "" : train.mNextStop;
+    String text = getContext().getString(R.string.metro_train_caption, train.mLine, destination, next);
     float pad = 8f * getResources().getDisplayMetrics().density;
     float width = mLabel.measureText(text);
-    float left = Math.max(pad, Math.min(dot.mX + pad, getWidth() - width - pad * 3));
-    float top = Math.max(pad, dot.mY - mLabel.getTextSize() - pad * 3);
+    float left = Math.max(pad, Math.min((float) px[0] + pad, getWidth() - width - pad * 3));
+    float top = Math.max(pad, (float) px[1] - mLabel.getTextSize() - pad * 3);
     mLabelBox.set(left, top, left + width + pad * 2, top + mLabel.getTextSize() + pad * 2);
     canvas.drawRoundRect(mLabelBox, pad, pad, mLabelBg);
     canvas.drawText(text, left + pad, top + mLabel.getTextSize() + pad / 2, mLabel);
   }
-
-  private static int parseColor(@Nullable String color)
-  {
-    if (color == null)
-      return Color.GRAY;
-    String hex = color.startsWith("#") ? color : "#" + color;
-    try
-    {
-      return Color.parseColor(hex);
-    }
-    catch (IllegalArgumentException ignored)
-    {
-      return Color.GRAY;
-    }
-  }
-
-  private static int labelColor(int color)
-  {
-    double luminance = 0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color);
-    return luminance > 160 ? Color.BLACK : Color.WHITE;
-  }
-
-  private static final class Motion
-  {
-    MetroTrain mTrain;
-    double mLat;
-    double mLon;
-  }
-
-  private static final class Dot
-  {
-    float mX;
-    float mY;
-    String mKey;
-    MetroTrain mTrain;
-  }
-
 }

@@ -17,6 +17,17 @@ public final class MetroLive
     nativeSetEnabled(enabled);
   }
 
+  /** Replaces the arrows drawn in the map pass. Null or empty clears them. */
+  public static void setTrains(@Nullable MetroTrain[] trains)
+  {
+    nativeSetTrains(trains);
+  }
+
+  public static void setTapListener(boolean enabled)
+  {
+    nativeSetTapListener(enabled);
+  }
+
   @Nullable
   public static MetroSnapshot poll()
   {
@@ -33,6 +44,10 @@ public final class MetroLive
   private static native boolean nativeIsEnabled();
 
   private static native void nativeSetEnabled(boolean enabled);
+
+  private static native void nativeSetTrains(@Nullable MetroTrain[] trains);
+
+  private static native void nativeSetTapListener(boolean enabled);
 
   private static native boolean nativePoll(MetroSnapshot snapshot);
 }

@@ -17,4 +17,6 @@
   <string name="metro_estimated">Estimación</string>
   <string name="metro_needs_key">Añade el identificador y la clave de TMB en BCN Transport para ver los trenes.</string>
   <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
+  <string name="metro_lines_title">Líneas</string>
+  <string name="metro_lines_summary">Se muestran en el mapa. Todas las líneas están activadas hasta que desactives una.</string>
 </resources>

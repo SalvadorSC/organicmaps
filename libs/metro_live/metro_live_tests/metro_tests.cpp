@@ -64,6 +64,14 @@ metro_live::Network SampleNetwork()
   return metro_live::BuildNetwork(*lines, *stations);
 }
 
+double HeadingDelta(double a, double b)
+{
+  double d = std::fmod(std::abs(a - b), 360.0);
+  if (d > 180.0)
+    d = 360.0 - d;
+  return d;
+}
+
 metro_live::ArrivalObs Row(std::string line, std::string trajecte, std::string service, int station, int64_t eta,
                            std::string destination)
 {
@@ -130,6 +138,7 @@ UNIT_TEST(Estimate_InterpolatesIntoNextStation)
   TEST_GREATER(trains[0].m_lat, 41.3805, ());
   TEST_LESS(trains[0].m_lat, 41.381, ());
   TEST_ALMOST_EQUAL_ABS(trains[0].m_lon, 2.15, 1e-6, ());
+  TEST_LESS(HeadingDelta(trains[0].m_headingDeg, 0.0), 5.0, ());
 }
 
 UNIT_TEST(Estimate_TerminusStaysOnPlatform)
@@ -421,4 +430,42 @@ UNIT_TEST(Estimate_RecordedFeedsIfPresent)
     TEST(sawL9, ());
   }
 }
+UNIT_TEST(Estimate_HeadingFollowsTravel)
+{
+  auto const network = SampleNetwork();
+  // Toward Alpha: Bravo is approached from Charlie, so the tangent points south.
+  auto const south = metro_live::EstimateTrains(network, {Row("L1", "0012", "50", 2, kNow + 40, "Alpha")}, kNow);
+  TEST_EQUAL(south.size(), 1, ());
+  TEST_LESS(HeadingDelta(south[0].m_headingDeg, 180.0), 5.0, (south[0].m_headingDeg));
+
+  // North, then east. The train is on the east leg, not on the chord through the corner.
+  std::string_view constexpr kBendStations = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.400]},
+       "properties":{"CODI_ESTACIO":1,"NOM_ESTACIO":"South","ORDRE_ESTACIO":1,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.150,41.401]},
+       "properties":{"CODI_ESTACIO":2,"NOM_ESTACIO":"Bend","ORDRE_ESTACIO":2,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.152,41.401]},
+       "properties":{"CODI_ESTACIO":3,"NOM_ESTACIO":"East","ORDRE_ESTACIO":3,"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E"}}
+    ]
+  })";
+  std::string_view constexpr kBendLines = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[2.150,41.400],[2.150,41.401],[2.152,41.401]]]},
+       "properties":{"NOM_LINIA":"L4","COLOR_LINIA":"F7A30E","NOM_TIPUS_TRANSPORT":"METRO"}}
+    ]
+  })";
+  auto stations = metro_live::ParseStations(kBendStations);
+  auto lines = metro_live::ParseLines(kBendLines);
+  TEST(stations.has_value(), ());
+  TEST(lines.has_value(), ());
+  auto const bend = metro_live::BuildNetwork(*lines, *stations);
+  auto const east = metro_live::EstimateTrains(bend, {Row("L4", "1", "run", 3, kNow + 43, "East")}, kNow);
+  TEST_EQUAL(east.size(), 1, ());
+  TEST_LESS(HeadingDelta(east[0].m_headingDeg, 90.0), 15.0, (east[0].m_headingDeg));
+  TEST_GREATER(east[0].m_lon, 2.1505, ());
+}
+
 }  // namespace metro_tests

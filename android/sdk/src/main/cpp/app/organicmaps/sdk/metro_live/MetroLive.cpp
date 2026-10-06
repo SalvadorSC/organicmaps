@@ -7,6 +7,10 @@
 
 #include "indexer/mwm_set.hpp"
 
+#include "drape_frontend/metro_train_marker.hpp"
+
+#include "drape/color.hpp"
+
 #include "geometry/mercator.hpp"
 #include "geometry/point2d.hpp"
 
@@ -286,8 +290,9 @@ jobjectArray ToTrains(JNIEnv * env, std::vector<metro_live::TrainEstimate> const
   jfieldID const key = env->GetFieldID(clazz, "mKey", "Ljava/lang/String;");
   jfieldID const lat = env->GetFieldID(clazz, "mLat", "D");
   jfieldID const lon = env->GetFieldID(clazz, "mLon", "D");
+  jfieldID const heading = env->GetFieldID(clazz, "mHeadingDeg", "D");
   if (ctor == nullptr || line == nullptr || color == nullptr || destination == nullptr || nextStop == nullptr ||
-      key == nullptr || lat == nullptr || lon == nullptr)
+      key == nullptr || lat == nullptr || lon == nullptr || heading == nullptr)
   {
     env->ExceptionClear();
     return nullptr;
@@ -318,12 +323,63 @@ jobjectArray ToTrains(JNIEnv * env, std::vector<metro_live::TrainEstimate> const
     setText(key, trains[i].m_key);
     env->SetDoubleField(item, lat, trains[i].m_lat);
     env->SetDoubleField(item, lon, trains[i].m_lon);
+    env->SetDoubleField(item, heading, trains[i].m_headingDeg);
     env->SetObjectArrayElement(array, static_cast<jsize>(i), item);
     env->DeleteLocalRef(item);
   }
   return array;
 }
 }  // namespace
+
+dp::Color ParseMetroColor(std::string const & text)
+{
+  unsigned value = 0;
+  int digits = 0;
+  for (char const ch : text)
+  {
+    unsigned char const c = static_cast<unsigned char>(ch);
+    int nibble = -1;
+    if (c >= '0' && c <= '9')
+      nibble = c - '0';
+    else if (c >= 'a' && c <= 'f')
+      nibble = c - 'a' + 10;
+    else if (c >= 'A' && c <= 'F')
+      nibble = c - 'A' + 10;
+    if (nibble < 0)
+      continue;
+    value = (value << 4) + static_cast<unsigned>(nibble);
+    ++digits;
+    if (digits == 6)
+      break;
+  }
+  if (digits < 6)
+    return dp::Color(128, 128, 128);
+  return dp::Color(static_cast<uint8_t>((value >> 16) & 0xFF), static_cast<uint8_t>((value >> 8) & 0xFF),
+                   static_cast<uint8_t>(value & 0xFF));
+}
+
+void OnMetroTrainTapped(std::string const & key)
+{
+  JNIEnv * env = jni::GetEnv();
+  if (env == nullptr)
+    return;
+  jclass const clazz = env->FindClass("app/organicmaps/widget/MetroTrainOverlay");
+  if (clazz == nullptr)
+  {
+    env->ExceptionClear();
+    return;
+  }
+  jmethodID const method = env->GetStaticMethodID(clazz, "onTrainTapped", "(Ljava/lang/String;)V");
+  if (method == nullptr)
+  {
+    env->ExceptionClear();
+    return;
+  }
+  jni::ScopedLocalRef<jstring> const text(env, jni::ToJavaString(env, key));
+  env->CallStaticVoidMethod(clazz, method, text.get());
+  if (env->ExceptionCheck())
+    env->ExceptionClear();
+}
 
 extern "C"
 {
@@ -335,6 +391,61 @@ JNIEXPORT jboolean Java_app_organicmaps_sdk_metro_1live_MetroLive_nativeIsEnable
 JNIEXPORT void Java_app_organicmaps_sdk_metro_1live_MetroLive_nativeSetEnabled(JNIEnv *, jclass, jboolean enabled)
 {
   metro_live::SetMetroLiveEnabled(enabled == JNI_TRUE);
+}
+
+JNIEXPORT void Java_app_organicmaps_sdk_metro_1live_MetroLive_nativeSetTrains(JNIEnv * env, jclass, jobjectArray trains)
+{
+  if (!g_framework)
+    return;
+  std::vector<df::MetroTrainMarker> markers;
+  std::vector<std::string> keys;
+  if (trains != nullptr)
+  {
+    jclass const clazz = env->FindClass("app/organicmaps/sdk/metro_live/MetroTrain");
+    jfieldID const colorField = clazz == nullptr ? nullptr : env->GetFieldID(clazz, "mColor", "Ljava/lang/String;");
+    jfieldID const keyField = clazz == nullptr ? nullptr : env->GetFieldID(clazz, "mKey", "Ljava/lang/String;");
+    jfieldID const latField = clazz == nullptr ? nullptr : env->GetFieldID(clazz, "mLat", "D");
+    jfieldID const lonField = clazz == nullptr ? nullptr : env->GetFieldID(clazz, "mLon", "D");
+    jfieldID const headingField = clazz == nullptr ? nullptr : env->GetFieldID(clazz, "mHeadingDeg", "D");
+    if (clazz == nullptr || colorField == nullptr || keyField == nullptr || latField == nullptr ||
+        lonField == nullptr || headingField == nullptr)
+    {
+      env->ExceptionClear();
+      return;
+    }
+    double constexpr kDegToRad = 0.017453292519943295;
+    jsize const count = env->GetArrayLength(trains);
+    markers.reserve(static_cast<size_t>(count));
+    keys.reserve(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; ++i)
+    {
+      jobject const item = env->GetObjectArrayElement(trains, i);
+      if (item == nullptr)
+        continue;
+      jni::ScopedLocalRef<jstring> const colorText(env, static_cast<jstring>(env->GetObjectField(item, colorField)));
+      jni::ScopedLocalRef<jstring> const keyText(env, static_cast<jstring>(env->GetObjectField(item, keyField)));
+      df::MetroTrainMarker marker;
+      marker.m_mercator =
+          mercator::FromLatLon(env->GetDoubleField(item, latField), env->GetDoubleField(item, lonField));
+      marker.m_headingRad = static_cast<float>(env->GetDoubleField(item, headingField) * kDegToRad);
+      marker.m_color =
+          ParseMetroColor(colorText.get() == nullptr ? std::string() : jni::ToNativeString(env, colorText.get()));
+      markers.push_back(marker);
+      keys.push_back(keyText.get() == nullptr ? std::string() : jni::ToNativeString(env, keyText.get()));
+      env->DeleteLocalRef(item);
+    }
+  }
+  frm()->SetMetroTrains(std::move(markers), std::move(keys));
+}
+
+JNIEXPORT void Java_app_organicmaps_sdk_metro_1live_MetroLive_nativeSetTapListener(JNIEnv *, jclass, jboolean enabled)
+{
+  if (!g_framework)
+    return;
+  if (enabled == JNI_TRUE)
+    frm()->SetMetroTrainTapHandler(&OnMetroTrainTapped);
+  else
+    frm()->SetMetroTrainTapHandler({});
 }
 
 JNIEXPORT jboolean Java_app_organicmaps_sdk_metro_1live_MetroLive_nativePoll(JNIEnv * env, jclass, jobject out)

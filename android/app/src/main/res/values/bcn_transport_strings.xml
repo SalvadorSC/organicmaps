@@ -17,4 +17,6 @@
   <string name="metro_estimated">Estimated</string>
   <string name="metro_needs_key">Add a TMB app id and key in BCN Transport to see metro trains.</string>
   <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
+  <string name="metro_lines_title">Lines</string>
+  <string name="metro_lines_summary">Shown on the map. Every line is on until you turn it off.</string>
 </resources>

@@ -1725,6 +1725,26 @@ m2::PointD Framework::GtoP(m2::PointD const & p) const
   return m_currentModelView.PtoP3d(m_currentModelView.GtoP(p));
 }
 
+void Framework::SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+{
+  m_metroTrainHits.clear();
+  size_t const count = std::min(markers.size(), keys.size());
+  m_metroTrainHits.reserve(count);
+  for (size_t i = 0; i < count; ++i)
+  {
+    if (keys[i].empty())
+      continue;
+    m_metroTrainHits.push_back({markers[i].m_mercator, keys[i]});
+  }
+  if (m_drapeEngine != nullptr)
+    m_drapeEngine->SetMetroTrains(std::move(markers));
+}
+
+void Framework::SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler)
+{
+  m_onMetroTrainTap = std::move(handler);
+}
+
 m2::PointD Framework::P3dtoG(m2::PointD const & p) const
 {
   auto pt = m_currentModelView.PtoG(m_currentModelView.P3dtoP(p));
@@ -2318,6 +2338,33 @@ void Framework::OnTapEvent(place_page::BuildInfo const & buildInfo)
   {
     SwitchFullScreen();
     return;
+  }
+
+  // Train arrows are drawn in the map pass. Hit-test in screen pixels so a pan
+  // is never stolen by a view that lags the map.
+  if (m_onMetroTrainTap)
+  {
+    std::string hitKey;
+    double best = 28.0 * df::VisualParams::Instance().GetVisualScale();
+    for (auto const & train : m_metroTrainHits)
+    {
+      m2::PointD const tapPx = m_currentModelView.PtoP3d(m_currentModelView.GtoP(buildInfo.m_mercator));
+      m2::PointD const trainPx = m_currentModelView.PtoP3d(m_currentModelView.GtoP(train.m_mercator));
+      double const dist = (tapPx - trainPx).Length();
+      if (dist <= best)
+      {
+        best = dist;
+        hitKey = train.m_key;
+      }
+    }
+    if (!hitKey.empty())
+    {
+      if (m_currentPlacePageInfo)
+        DeactivateMapSelection();
+      m_onMetroTrainTap(hitKey);
+      return;
+    }
+    m_onMetroTrainTap({});
   }
 
   // Taps on an alternative route's ETA balloon (ROUTE_ALT mark) or on its polyline,
