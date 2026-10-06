@@ -1721,7 +1721,8 @@ m2::PointD Framework::PtoG(m2::PointD const & p) const
 
 m2::PointD Framework::GtoP(m2::PointD const & p) const
 {
-  return m_currentModelView.GtoP(p);
+  // PtoP3d is identity until the map is tilted, and is what the scene actually draws.
+  return m_currentModelView.PtoP3d(m_currentModelView.GtoP(p));
 }
 
 m2::PointD Framework::P3dtoG(m2::PointD const & p) const

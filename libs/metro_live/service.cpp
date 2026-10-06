@@ -222,7 +222,7 @@ MetroService::MetroService(HttpGet httpGet, WallClock wall, SteadyClock steady, 
   , m_credentials(std::move(credentials))
 {}
 
-PollResult MetroService::Poll()
+PollResult MetroService::Poll(std::vector<MapTrack> const & tracks)
 {
   std::lock_guard<std::mutex> const lock(m_mutex);
   PollResult result;
@@ -296,7 +296,18 @@ PollResult MetroService::Poll()
     for (auto const & line : m_network.m_lines)
       result.m_lines.push_back(LineSummary{line.m_name, line.m_color});
   if (m_hasNetwork && m_hasRows && nowSteady < m_networkExpires && nowSteady < m_rowsExpires)
-    result.m_trains = EstimateTrains(m_network, m_rows, nowUnix);
+  {
+    if (tracks.empty())
+    {
+      result.m_trains = EstimateTrains(m_network, m_rows, nowUnix);
+    }
+    else
+    {
+      Network snapped = m_network;
+      ApplyMapTracks(snapped, tracks);
+      result.m_trains = EstimateTrains(snapped, m_rows, nowUnix);
+    }
+  }
   return result;
 }
 
@@ -322,10 +333,10 @@ Credentials GetTmbCredentials()
   return credentials;
 }
 
-PollResult PollMetro()
+PollResult PollMetro(std::vector<MapTrack> const & tracks)
 {
   if (!IsMetroLiveEnabled())
     return {};
-  return SharedService().Poll();
+  return SharedService().Poll(tracks);
 }
 }  // namespace metro_live

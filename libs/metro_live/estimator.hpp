@@ -38,6 +38,20 @@ struct Network
 // points in ORDRE_ESTACIO order, so a missing line file still places trains.
 Network BuildNetwork(std::vector<LinePath> const & lines, std::vector<Station> const & stations);
 
+// One rendered subway line. m_shape is the polyline Organic Maps draws for that
+// ref (transit-scheme geometry). m_stops are the station positions on that line,
+// used to anchor TMB stops; the train is still placed on m_shape.
+struct MapTrack
+{
+  std::string m_ref;
+  std::vector<ms::LatLon> m_shape;
+  std::vector<ms::LatLon> m_stops;
+};
+
+// Replaces a TMB line shape with the matching track and re-snaps every station
+// onto it. TMB order is unchanged. Lines with no matching ref are left as-is.
+void ApplyMapTracks(Network & network, std::vector<MapTrack> const & tracks);
+
 // Group rows by (line, codi_trajecte, codi_servei). The next station is the
 // soonest ETA. The train sits on the segment into that station: fraction
 // remaining/segment-time, where the segment time is the gap to the following

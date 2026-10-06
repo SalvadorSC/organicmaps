@@ -32,7 +32,7 @@ public:
   // Does not read the settings toggle. Callers that should honor it use PollMetro.
   MetroService(HttpGet httpGet, WallClock wall, SteadyClock steady, CredentialsFn credentials);
 
-  PollResult Poll();
+  PollResult Poll(std::vector<MapTrack> const & tracks = {});
 
 private:
   HttpGet m_httpGet;
@@ -57,5 +57,5 @@ void SetMetroLiveEnabled(bool enabled);
 Credentials GetTmbCredentials();
 
 // Not enabled: no network. Enabled without a key: m_needsKey, no network.
-PollResult PollMetro();
+PollResult PollMetro(std::vector<MapTrack> const & tracks = {});
 }  // namespace metro_live

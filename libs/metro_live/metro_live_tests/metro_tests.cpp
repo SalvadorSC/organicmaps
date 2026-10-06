@@ -6,7 +6,9 @@
 
 #include "coding/file_reader.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -294,6 +296,67 @@ UNIT_TEST(MetroService_MissingKeyDoesNotFetch)
   TEST_EQUAL(env.m_arrivals, 0, ());
 }
 
+double DistanceToLine(ms::LatLon const & point, std::vector<ms::LatLon> const & shape)
+{
+  if (shape.size() < 2)
+    return 1e9;
+  double constexpr kMetersPerDeg = 111320.0;
+  double constexpr kDegToRad = 0.017453292519943295;
+  double const cosLat = std::cos(point.m_lat * kDegToRad);
+  double best = 1e9;
+  for (size_t i = 0; i + 1 < shape.size(); ++i)
+  {
+    auto const & a = shape[i];
+    auto const & b = shape[i + 1];
+    double const bx = (b.m_lon - a.m_lon) * kMetersPerDeg * cosLat;
+    double const by = (b.m_lat - a.m_lat) * kMetersPerDeg;
+    double const px = (point.m_lon - a.m_lon) * kMetersPerDeg * cosLat;
+    double const py = (point.m_lat - a.m_lat) * kMetersPerDeg;
+    double const len2 = bx * bx + by * by;
+    double t = 0;
+    if (len2 > 1.0)
+      t = std::clamp((px * bx + py * by) / len2, 0.0, 1.0);
+    best = std::min(best, std::hypot(px - t * bx, py - t * by));
+  }
+  return best;
+}
+
+// TMB stations sit east of the curve Organic Maps draws. The halfway train must
+// follow that curve, not the straight chord through the TMB coordinates.
+UNIT_TEST(Estimate_FollowsInjectedMapLine)
+{
+  metro_live::Station south;
+  south.m_code = 1;
+  south.m_order = 1;
+  south.m_line = "L3";
+  south.m_name = "South";
+  south.m_point = ms::LatLon(41.39000, 2.15200);
+  metro_live::Station north;
+  north.m_code = 2;
+  north.m_order = 2;
+  north.m_line = "L3";
+  north.m_name = "North";
+  north.m_point = ms::LatLon(41.40000, 2.15200);
+
+  metro_live::LinePath path;
+  path.m_name = "L3";
+  path.m_color = "1EB53A";
+  path.m_shape = {south.m_point, north.m_point};
+  auto network = metro_live::BuildNetwork({path}, {south, north});
+
+  metro_live::MapTrack track;
+  track.m_ref = "l3";
+  track.m_shape = {ms::LatLon(41.39000, 2.15000), ms::LatLon(41.39500, 2.14800), ms::LatLon(41.40000, 2.15000)};
+  track.m_stops = {track.m_shape.front(), track.m_shape.back()};
+  metro_live::ApplyMapTracks(network, {track});
+
+  auto const trains = metro_live::EstimateTrains(network, {Row("L3", "1", "run", 2, kNow + 43, "North")}, kNow);
+  TEST_EQUAL(trains.size(), 1, ());
+  ms::LatLon const placed(trains[0].m_lat, trains[0].m_lon);
+  TEST_LESS(DistanceToLine(placed, track.m_shape), 15.0, (placed));
+  TEST_LESS(placed.m_lon, 2.1505, (placed));
+}
+
 // Opt-in check of the recorded TMB responses (not committed).
 //   METRO_LINES=... METRO_STATIONS=... METRO_ARRIVALS=...
 UNIT_TEST(Estimate_RecordedFeedsIfPresent)
@@ -322,6 +385,16 @@ UNIT_TEST(Estimate_RecordedFeedsIfPresent)
   int64_t const now = feed->m_updatedUnixSec == 0 ? kNow : feed->m_updatedUnixSec;
   auto const trains = metro_live::EstimateTrains(network, feed->m_rows, now);
   TEST_GREATER(trains.size(), 40, ());
+  for (auto const & train : trains)
+  {
+    for (auto const & line : network.m_lines)
+    {
+      if (line.m_name != train.m_line)
+        continue;
+      TEST_LESS(DistanceToLine(ms::LatLon(train.m_lat, train.m_lon), line.m_shape), 15.0,
+                (train.m_line, train.m_nextStop));
+    }
+  }
   bool sawL1 = false;
   for (auto const & train : trains)
   {

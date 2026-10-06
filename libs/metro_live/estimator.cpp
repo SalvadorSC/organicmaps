@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -100,11 +101,11 @@ void BuildAlong(IndexedLine & line)
     line.m_alongM[i] = line.m_alongM[i - 1] + ms::DistanceOnEarth(line.m_shape[i - 1], line.m_shape[i]);
 }
 
-double SnapAlong(IndexedLine const & line, ms::LatLon const & point)
+double SnapAlong(IndexedLine const & line, ms::LatLon const & point, double limitM)
 {
   if (line.m_shape.size() < 2)
     return -1;
-  double best = kSnapLimitM;
+  double best = limitM;
   double along = -1;
   double constexpr kDegToRad = 0.017453292519943295;
   double const latRad = point.m_lat * kDegToRad;
@@ -246,13 +247,76 @@ Network BuildNetwork(std::vector<LinePath> const & lines, std::vector<Station> c
     }
     BuildAlong(line);
     for (auto & station : line.m_stations)
-      station.m_alongM = SnapAlong(line, station.m_station.m_point);
+      station.m_alongM = SnapAlong(line, station.m_station.m_point, kSnapLimitM);
     network.m_lines.push_back(std::move(line));
     (void)name;
   }
   std::sort(network.m_lines.begin(), network.m_lines.end(),
             [](IndexedLine const & a, IndexedLine const & b) { return EarlierLine(a.m_name, b.m_name); });
   return network;
+}
+
+namespace
+{
+std::string LineKey(std::string_view name)
+{
+  std::string key;
+  key.reserve(name.size());
+  for (char const ch : name)
+  {
+    unsigned char const c = static_cast<unsigned char>(ch);
+    if (c == ' ' || c == '-' || c == '_')
+      continue;
+    key.push_back(static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c));
+  }
+  return key;
+}
+}  // namespace
+
+void ApplyMapTracks(Network & network, std::vector<MapTrack> const & tracks)
+{
+  // A matched line may be stored once per direction. The longer polyline is the
+  // one that still has the station-to-station curves.
+  double constexpr kStationMatchM = 400.0;
+  double constexpr kMapSnapLimitM = 3000.0;
+  std::unordered_map<std::string, MapTrack const *> best;
+  for (auto const & track : tracks)
+  {
+    if (track.m_ref.empty() || track.m_shape.size() < 2)
+      continue;
+    MapTrack const *& slot = best[LineKey(track.m_ref)];
+    if (slot == nullptr || track.m_shape.size() > slot->m_shape.size())
+      slot = &track;
+  }
+  if (best.empty())
+    return;
+
+  for (auto & line : network.m_lines)
+  {
+    auto const found = best.find(LineKey(line.m_name));
+    if (found == best.end())
+      continue;
+    MapTrack const & track = *found->second;
+    line.m_shape = track.m_shape;
+    BuildAlong(line);
+    for (auto & station : line.m_stations)
+    {
+      ms::LatLon anchor = station.m_station.m_point;
+      double nearest = kStationMatchM;
+      for (auto const & stop : track.m_stops)
+      {
+        if (!stop.IsValid())
+          continue;
+        double const distance = ms::DistanceOnEarth(station.m_station.m_point, stop);
+        if (distance < nearest)
+        {
+          nearest = distance;
+          anchor = stop;
+        }
+      }
+      station.m_alongM = SnapAlong(line, anchor, kMapSnapLimitM);
+    }
+  }
 }
 
 std::vector<TrainEstimate> EstimateTrains(Network const & network, std::vector<ArrivalObs> const & rows,

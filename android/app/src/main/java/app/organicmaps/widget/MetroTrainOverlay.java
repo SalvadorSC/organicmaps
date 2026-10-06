@@ -7,7 +7,6 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -45,7 +44,6 @@ public class MetroTrainOverlay extends LinearLayout
 {
   private static final long REFRESH_MS = 20000;
   private static final long FRAME_MS = 80;
-  private static final double SNAP_DEG = 0.02;
 
   private final Handler mHandler = new Handler(Looper.getMainLooper());
   private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
@@ -235,7 +233,6 @@ public class MetroTrainOverlay extends LinearLayout
     mBanner.setText(R.string.metro_estimated);
     mChipsScroll.setVisibility(VISIBLE);
     rebuildChips(snapshot.mLines);
-    long now = SystemClock.uptimeMillis();
     Map<String, Motion> next = new HashMap<>();
     if (snapshot.mTrains != null)
     {
@@ -243,31 +240,12 @@ public class MetroTrainOverlay extends LinearLayout
       {
         if (train == null || train.mKey == null)
           continue;
+        // A lat/lon chord between polls cuts across the subway curve (hundreds of
+        // metres on L3/L4 through Eixample). Show the estimated point directly.
         Motion motion = new Motion();
         motion.mTrain = train;
-        motion.mToLat = train.mLat;
-        motion.mToLon = train.mLon;
-        motion.mStartMs = now;
-        Motion previous = mMotion.get(train.mKey);
-        if (previous != null)
-        {
-          double[] shown = previous.display(now);
-          if (Math.abs(shown[0] - train.mLat) < SNAP_DEG && Math.abs(shown[1] - train.mLon) < SNAP_DEG)
-          {
-            motion.mFromLat = shown[0];
-            motion.mFromLon = shown[1];
-          }
-          else
-          {
-            motion.mFromLat = train.mLat;
-            motion.mFromLon = train.mLon;
-          }
-        }
-        else
-        {
-          motion.mFromLat = train.mLat;
-          motion.mFromLon = train.mLon;
-        }
+        motion.mLat = train.mLat;
+        motion.mLon = train.mLon;
         next.put(train.mKey, motion);
       }
     }
@@ -383,7 +361,6 @@ public class MetroTrainOverlay extends LinearLayout
     mDots.clear();
     if (mNeedsKey || mMotion.isEmpty())
       return;
-    long now = SystemClock.uptimeMillis();
     float radius = 8f * getResources().getDisplayMetrics().density;
     Dot selected = null;
     for (Motion motion : mMotion.values())
@@ -391,8 +368,7 @@ public class MetroTrainOverlay extends LinearLayout
       MetroTrain train = motion.mTrain;
       if (train.mLine != null && mDisabled.contains(train.mLine))
         continue;
-      double[] shown = motion.display(now);
-      double[] px = Framework.nativeLatLonToScreen(shown[0], shown[1]);
+      double[] px = Framework.nativeLatLonToScreen(motion.mLat, motion.mLon);
       if (px == null || px.length < 2)
         continue;
       if (px[0] < -radius || px[1] < -radius || px[0] > getWidth() + radius || px[1] > getHeight() + radius)
@@ -451,17 +427,8 @@ public class MetroTrainOverlay extends LinearLayout
   private static final class Motion
   {
     MetroTrain mTrain;
-    double mFromLat;
-    double mFromLon;
-    double mToLat;
-    double mToLon;
-    long mStartMs;
-
-    double[] display(long now)
-    {
-      double u = Math.min(1.0, (now - mStartMs) / (double) REFRESH_MS);
-      return new double[] {mFromLat + (mToLat - mFromLat) * u, mFromLon + (mToLon - mFromLon) * u};
-    }
+    double mLat;
+    double mLon;
   }
 
   private static final class Dot
