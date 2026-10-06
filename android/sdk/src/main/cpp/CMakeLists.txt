@@ -34,6 +34,7 @@ set(SRC
   app/organicmaps/sdk/core/jni_helper.cpp
   app/organicmaps/sdk/core/jni_java_methods.cpp
   app/organicmaps/sdk/core/logging.cpp
+  app/organicmaps/sdk/bike_share/BikeShare.cpp
   app/organicmaps/sdk/bookmarks/data/Bookmark.cpp
   app/organicmaps/sdk/bookmarks/data/Bookmark.hpp
   app/organicmaps/sdk/bookmarks/data/BookmarkCategory.cpp
@@ -97,6 +98,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE .)
 target_link_libraries(${PROJECT_NAME} PRIVATE
   # Organic Maps libs
   map
+  bike_share
   # ge0
   # tracking
   # routing

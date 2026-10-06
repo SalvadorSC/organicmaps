@@ -1,0 +1,41 @@
+{
+  "last_updated": 1791274675,
+  "ttl": 60,
+  "version": "2.3",
+  "data": {
+    "stations": [
+      {
+        "station_id": "162830923",
+        "name": "RENFE Molins de Rei",
+        "short_name": "34744",
+        "lat": 41.409661,
+        "lon": 2.02074,
+        "capacity": 20
+      },
+      {
+        "station_id": "135349994",
+        "name": "TRAM Sant Feliu - Consell Comarcal",
+        "short_name": "34837",
+        "lat": 41.379358,
+        "lon": 2.052798,
+        "capacity": 20
+      },
+      {
+        "station_id": "342754906",
+        "name": "FGC Sant Josep",
+        "short_name": "34811",
+        "lat": 41.360898,
+        "lon": 2.110582,
+        "capacity": 20
+      },
+      {
+        "station_id": "135355081",
+        "name": "RENFE Sant Feliu de Llobregat",
+        "short_name": "34920",
+        "lat": 41.384018,
+        "lon": 2.047004,
+        "capacity": 16
+      }
+    ]
+  }
+}

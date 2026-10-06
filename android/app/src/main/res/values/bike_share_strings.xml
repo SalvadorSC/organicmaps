@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="bike_share_availability_title">Bike-share availability</string>
+  <string name="bike_share_availability_summary">When you open a bike-share station, show how many bikes and free docks are available. Downloads the public GBFS feed for that area. Respects the mobile data setting. No account and no tracking.</string>
+  <string name="bike_share_updated">Updated %s</string>
+  <plurals name="bike_share_bikes">
+    <item quantity="one">%d bike</item>
+    <item quantity="other">%d bikes</item>
+  </plurals>
+  <plurals name="bike_share_ebikes">
+    <item quantity="one">%d e-bike</item>
+    <item quantity="other">%d e-bikes</item>
+  </plurals>
+  <plurals name="bike_share_docks">
+    <item quantity="one">%d free dock</item>
+    <item quantity="other">%d free docks</item>
+  </plurals>
+</resources>

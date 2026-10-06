@@ -301,6 +301,13 @@ public class MapObject implements PlacePageData
     return mRawTypes.contains("railway-tram_stop");
   }
 
+  public boolean isBicycleRental()
+  {
+    if (mRawTypes == null)
+      return false;
+    return mRawTypes.contains("amenity-bicycle_rental");
+  }
+
   public final boolean isMyPosition()
   {
     return mMapObjectType == MY_POSITION;

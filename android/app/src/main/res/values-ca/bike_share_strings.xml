@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="bike_share_availability_title">Disponibilitat de bicicletes compartides</string>
+  <string name="bike_share_availability_summary">En obrir una estació de bicicletes compartides, mostra quantes bicicletes i ancoratges lliures hi ha. Descarrega el flux públic GBFS de la zona. Respecta la configuració de dades mòbils. Sense compte ni seguiment.</string>
+  <string name="bike_share_updated">Actualitzat %s</string>
+  <plurals name="bike_share_bikes">
+    <item quantity="one">%d bicicleta</item>
+    <item quantity="other">%d bicicletes</item>
+  </plurals>
+  <plurals name="bike_share_ebikes">
+    <item quantity="one">%d bici elèctrica</item>
+    <item quantity="other">%d bicis elèctriques</item>
+  </plurals>
+  <plurals name="bike_share_docks">
+    <item quantity="one">%d ancoratge lliure</item>
+    <item quantity="other">%d ancoratges lliures</item>
+  </plurals>
+</resources>

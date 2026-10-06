@@ -113,6 +113,18 @@
         tools:text="Lenina str, 10" />
 
       <TextView
+        android:id="@+id/tv__bike_share"
+        android:textAlignment="viewStart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/margin_quarter"
+        android:textAppearance="@style/MwmTextAppearance.Body3"
+        android:textColor="?colorAccent"
+        android:visibility="gone"
+        tools:text="13 bikes · 7 free docks\nUpdated 1 minute ago"
+        tools:visibility="visible" />
+
+      <TextView
         android:id="@+id/tv__downloader_details"
         android:textAlignment="viewStart"
         android:layout_width="wrap_content"

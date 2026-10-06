@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="bike_share_availability_title">Disponibilidad de bicicletas compartidas</string>
+  <string name="bike_share_availability_summary">Al abrir una estación de bicicletas compartidas, muestra cuántas bicicletas y anclajes libres hay. Descarga el feed público GBFS de la zona. Respeta el ajuste de datos móviles. Sin cuenta ni seguimiento.</string>
+  <string name="bike_share_updated">Actualizado %s</string>
+  <plurals name="bike_share_bikes">
+    <item quantity="one">%d bicicleta</item>
+    <item quantity="other">%d bicicletas</item>
+  </plurals>
+  <plurals name="bike_share_ebikes">
+    <item quantity="one">%d bici eléctrica</item>
+    <item quantity="other">%d bicis eléctricas</item>
+  </plurals>
+  <plurals name="bike_share_docks">
+    <item quantity="one">%d anclaje libre</item>
+    <item quantity="other">%d anclajes libres</item>
+  </plurals>
+</resources>
