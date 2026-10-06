@@ -61,6 +61,9 @@
   <string name="pref_bus_arrivals" translatable="false">BusArrivalsEnabled</string>
   <string name="pref_metro_live" translatable="false">MetroLiveEnabled</string>
   <string name="pref_metro_lines" translatable="false">MetroLiveLines</string>
+  <string name="pref_commuter_live" translatable="false">CommuterLiveEnabled</string>
+  <string name="pref_fgc_lines" translatable="false">FgcLines</string>
+  <string name="pref_rodalies_lines" translatable="false">RodaliesLines</string>
   <string name="pref_tmb_app_id" translatable="false">TmbAppId</string>
   <string name="pref_tmb_app_key" translatable="false">TmbAppKey</string>
   <string name="never_enum_value" translatable="false">NEVER</string>

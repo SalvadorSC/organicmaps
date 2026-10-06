@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="bcn_transport_title">BCN Transport</string>
-  <string name="bcn_transport_summary">Bike-share, live bus arrivals, and estimated metro trains for the Barcelona area.</string>
+  <string name="bcn_transport_summary">Bike-share, live bus arrivals, estimated metro, and live FGC and Rodalies trains for the Barcelona area.</string>
   <string name="bus_arrivals_title">Live bus arrivals</string>
   <string name="bus_arrivals_summary">When you open a bus stop in the Barcelona area, show upcoming buses. Downloads public AMB data and, if you add a TMB key, city-bus arrivals. Respects the mobile data setting. Off by default. The key stays on this device.</string>
   <string name="bcn_transport_tmb_app_id">TMB app id</string>
@@ -19,4 +19,9 @@
   <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
   <string name="metro_lines_title">Lines</string>
   <string name="metro_lines_summary">Shown on the map. Every line is on until you turn it off.</string>
+  <string name="commuter_live_title">Live FGC and Rodalies</string>
+  <string name="commuter_live_summary">Shows live FGC and Rodalies trains in the Barcelona area, with a direction arrow. Positions come from FGC Geotren and Renfe (CC BY 4.0). No TMB key. Respects the mobile data setting. Off by default.</string>
+  <string name="fgc_lines_title">FGC lines</string>
+  <string name="rodalies_lines_title">Rodalies lines</string>
+  <string name="commuter_lines_summary">Shown on the map. Every line is on until you turn it off. Separate from the metro lines.</string>
 </resources>

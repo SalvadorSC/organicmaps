@@ -19,7 +19,8 @@ namespace df
 {
 // Draws train markers in the frontend render pass, with the same ScreenBase as the
 // map. An Android view reprojects a viewport that the render thread publishes a
-// frame later, so markers trail pans and flings. These markers cannot.
+// frame later, so markers trail pans and flings. These markers cannot. Estimated
+// metro trains are discs. Directional trains are chevrons rotated with the map.
 class MetroTrainRenderer
 {
 public:
@@ -33,7 +34,8 @@ private:
   void Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp::TextureManager> textures);
 
   std::vector<MetroTrainMarker> m_trains;
-  std::unordered_map<uint32_t, RenderNode> m_meshes;
+  // Color plus shape, so a disc and a chevron of the same colour stay distinct.
+  std::unordered_map<uint64_t, RenderNode> m_meshes;
   bool m_dirty = false;
 };
 }  // namespace df

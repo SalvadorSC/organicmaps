@@ -37,6 +37,7 @@ set(SRC
   app/organicmaps/sdk/bike_share/BikeShare.cpp
   app/organicmaps/sdk/bus_live/BusLive.cpp
   app/organicmaps/sdk/metro_live/MetroLive.cpp
+  app/organicmaps/sdk/commuter_live/CommuterLive.cpp
   app/organicmaps/sdk/bookmarks/data/Bookmark.cpp
   app/organicmaps/sdk/bookmarks/data/Bookmark.hpp
   app/organicmaps/sdk/bookmarks/data/BookmarkCategory.cpp
@@ -103,6 +104,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   bike_share
   bus_live
   metro_live
+  commuter_live
   # ge0
   # tracking
   # routing

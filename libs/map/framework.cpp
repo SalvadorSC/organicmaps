@@ -1725,19 +1725,41 @@ m2::PointD Framework::GtoP(m2::PointD const & p) const
   return m_currentModelView.PtoP3d(m_currentModelView.GtoP(p));
 }
 
-void Framework::SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+void Framework::PublishTrainMarkers()
 {
+  std::vector<df::MetroTrainMarker> markers;
+  markers.reserve(m_metroMarkers.size() + m_commuterMarkers.size());
   m_metroTrainHits.clear();
-  size_t const count = std::min(markers.size(), keys.size());
-  m_metroTrainHits.reserve(count);
-  for (size_t i = 0; i < count; ++i)
+  auto const add =
+      [&](std::vector<df::MetroTrainMarker> const & layerMarkers, std::vector<std::string> const & layerKeys)
   {
-    if (keys[i].empty())
-      continue;
-    m_metroTrainHits.push_back({markers[i].m_mercator, keys[i]});
-  }
+    markers.insert(markers.end(), layerMarkers.begin(), layerMarkers.end());
+    size_t const count = std::min(layerMarkers.size(), layerKeys.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+      if (layerKeys[i].empty())
+        continue;
+      m_metroTrainHits.push_back({layerMarkers[i].m_mercator, layerKeys[i]});
+    }
+  };
+  add(m_metroMarkers, m_metroKeys);
+  add(m_commuterMarkers, m_commuterKeys);
   if (m_drapeEngine != nullptr)
     m_drapeEngine->SetMetroTrains(std::move(markers));
+}
+
+void Framework::SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+{
+  m_metroMarkers = std::move(markers);
+  m_metroKeys = std::move(keys);
+  PublishTrainMarkers();
+}
+
+void Framework::SetCommuterTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+{
+  m_commuterMarkers = std::move(markers);
+  m_commuterKeys = std::move(keys);
+  PublishTrainMarkers();
 }
 
 void Framework::SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler)
