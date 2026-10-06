@@ -114,7 +114,7 @@ UNIT_TEST(AvailabilityService_HttpFailureIsSilentAndNotCached)
   TEST_EQUAL(calls, 2, ());
 }
 
-UNIT_TEST(AvailabilityService_ZeroTtlRefetches)
+UNIT_TEST(AvailabilityService_ZeroTtlCachesForMinimumInterval)
 {
   std::string const discovery = R"({
     "ttl": 0,
@@ -144,7 +144,7 @@ UNIT_TEST(AvailabilityService_ZeroTtlRefetches)
       return status;
     return std::nullopt;
   };
-  auto const now = std::chrono::steady_clock::time_point{};
+  auto now = std::chrono::steady_clock::time_point{};
   std::vector<bike_share::FeedDefinition> feeds = {
       {"ttl0", "Test", "https://ttl0.test/gbfs.json", {9.0, 9.0, 11.0, 11.0}}};
   bike_share::AvailabilityService service(http, [&now] { return now; }, feeds);
@@ -158,6 +158,11 @@ UNIT_TEST(AvailabilityService_ZeroTtlRefetches)
 
   auto const second = service.Lookup({ms::LatLon(10.0, 10.0), "Dock", ""});
   TEST(second.has_value(), ());
+  TEST_EQUAL(calls, 3, ());
+
+  now += std::chrono::seconds(31);
+  auto const third = service.Lookup({ms::LatLon(10.0, 10.0), "Dock", ""});
+  TEST(third.has_value(), ());
   TEST_EQUAL(calls, 6, ());
 }
 }  // namespace availability_service_tests

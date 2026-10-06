@@ -18,6 +18,9 @@ namespace
 // A fixed product name, not a device id. Some publishers reject an empty agent.
 std::string_view constexpr kUserAgent = "OrganicMaps";
 double constexpr kTimeoutSec = 15.0;
+// Publishers that send ttl 0 ask clients not to cache. A short floor still
+// avoids refetching when the place page refreshes the same station.
+int constexpr kMinCacheSec = 30;
 
 std::optional<std::string> HttpGet(std::string const & url)
 {
@@ -122,12 +125,9 @@ std::optional<AvailabilityService::Snapshot> AvailabilityService::Load(FeedDefin
   snapshot.m_stations = std::move(information->m_stations);
   snapshot.m_statusById = std::move(status->m_byId);
   snapshot.m_feedLastUpdated = status->m_lastUpdated;
-  // ttl 0 means the publisher forbids caching, so the next open refetches.
-  if (status->m_ttlSec > 0)
-  {
-    snapshot.m_expires = now + std::chrono::seconds(status->m_ttlSec);
-    m_cache.insert_or_assign(feed.m_id, snapshot);
-  }
+  int const ttlSec = status->m_ttlSec > 0 ? status->m_ttlSec : kMinCacheSec;
+  snapshot.m_expires = now + std::chrono::seconds(ttlSec);
+  m_cache.insert_or_assign(feed.m_id, snapshot);
   return snapshot;
 }
 
