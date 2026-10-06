@@ -556,8 +556,10 @@ public:
 
   // Estimated metro dots. keys[i] is the tap id for markers[i]. Empty clears that layer.
   void SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys);
-  // Live FGC and Rodalies chevrons. Kept separate from the metro layer.
+  // Live FGC and Rodalies discs. Kept separate from the metro layer.
   void SetCommuterTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys);
+  // Coloured strokes for rail the map leaves grey. Empty clears them.
+  void SetCommuterStrokes(std::vector<df::MetroTrainStroke> strokes);
   void SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler);
 
   /// @}

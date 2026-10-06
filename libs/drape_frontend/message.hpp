@@ -116,7 +116,8 @@ public:
     SetTileBackgroundMode,
     ScenarioViewport,
     AssignTileBackgroundImage,
-    UpdateMetroTrains
+    UpdateMetroTrains,
+    UpdateCommuterStrokes
   };
 
   virtual ~Message() = default;

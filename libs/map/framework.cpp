@@ -1762,6 +1762,12 @@ void Framework::SetCommuterTrains(std::vector<df::MetroTrainMarker> markers, std
   PublishTrainMarkers();
 }
 
+void Framework::SetCommuterStrokes(std::vector<df::MetroTrainStroke> strokes)
+{
+  if (m_drapeEngine != nullptr)
+    m_drapeEngine->SetCommuterStrokes(std::move(strokes));
+}
+
 void Framework::SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler)
 {
   m_onMetroTrainTap = std::move(handler);

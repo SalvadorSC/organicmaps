@@ -4,6 +4,7 @@
 
 #include "base/string_utils.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 
@@ -52,21 +53,29 @@ std::string ReadText(coding::JsonValue const * value)
   return {};
 }
 
-std::string FirstParada(std::string_view text)
+std::vector<std::string> AllParades(std::string_view text)
 {
-  auto const key = text.find("\"parada\"");
-  if (key == std::string_view::npos)
-    return {};
-  auto const colon = text.find(':', key);
-  if (colon == std::string_view::npos)
-    return {};
-  auto const open = text.find('"', colon + 1);
-  if (open == std::string_view::npos)
-    return {};
-  auto const close = text.find('"', open + 1);
-  if (close == std::string_view::npos)
-    return {};
-  return std::string(text.substr(open + 1, close - open - 1));
+  std::vector<std::string> stops;
+  size_t pos = 0;
+  while (pos < text.size())
+  {
+    auto const key = text.find("\"parada\"", pos);
+    if (key == std::string_view::npos)
+      break;
+    auto const colon = text.find(':', key);
+    if (colon == std::string_view::npos)
+      break;
+    auto const open = text.find('"', colon + 1);
+    if (open == std::string_view::npos)
+      break;
+    auto const close = text.find('"', open + 1);
+    if (close == std::string_view::npos)
+      break;
+    if (close > open + 1)
+      stops.emplace_back(text.substr(open + 1, close - open - 1));
+    pos = close + 1;
+  }
+  return stops;
 }
 
 class Cursor
@@ -262,6 +271,96 @@ bool ParseVehiclePosition(std::string_view bytes, RawTrain & train, bool & hasPo
     return true;
   });
 }
+
+bool ParseStopEvent(std::string_view bytes, int64_t & unixSec)
+{
+  bool has = false;
+  bool const ok = ParseMessage(bytes, [&](Cursor & cursor, uint32_t field, uint32_t wire)
+  {
+    if (field == 2 && wire == 0)
+    {
+      uint64_t value = 0;
+      if (!cursor.ReadVarint(value))
+        return false;
+      unixSec = static_cast<int64_t>(value);
+      has = true;
+      return true;
+    }
+    return cursor.Skip(wire);
+  });
+  return ok && has;
+}
+
+bool ParseStopVisit(std::string_view bytes, StopVisit & visit, bool & skipped)
+{
+  skipped = false;
+  int64_t arrival = 0;
+  int64_t departure = 0;
+  bool hasArrival = false;
+  bool hasDeparture = false;
+  bool const ok = ParseMessage(bytes, [&](Cursor & cursor, uint32_t field, uint32_t wire)
+  {
+    if ((field == 2 || field == 3) && wire == 2)
+    {
+      std::string_view slice;
+      if (!cursor.ReadSlice(slice))
+        return false;
+      int64_t unixSec = 0;
+      if (!ParseStopEvent(slice, unixSec))
+        return true;
+      if (field == 2)
+      {
+        arrival = unixSec;
+        hasArrival = true;
+      }
+      else
+      {
+        departure = unixSec;
+        hasDeparture = true;
+      }
+      return true;
+    }
+    if (field == 4 && wire == 2)
+      return cursor.ReadString(visit.m_stopId);
+    if (field == 5 && wire == 0)
+    {
+      uint64_t value = 0;
+      if (!cursor.ReadVarint(value))
+        return false;
+      skipped = value == 1;
+      return true;
+    }
+    return cursor.Skip(wire);
+  });
+  if (!ok)
+    return false;
+  if (hasArrival)
+    visit.m_etaUnixSec = arrival;
+  else if (hasDeparture)
+    visit.m_etaUnixSec = departure;
+  return true;
+}
+
+bool ParseTripDescriptor(std::string_view bytes, std::string & tripId, std::string & routeId, bool & canceled)
+{
+  canceled = false;
+  return ParseMessage(bytes, [&](Cursor & cursor, uint32_t field, uint32_t wire)
+  {
+    if (field == 1 && wire == 2)
+      return cursor.ReadString(tripId);
+    if (field == 5 && wire == 2)
+      return cursor.ReadString(routeId);
+    if (field == 4 && wire == 0)
+    {
+      uint64_t value = 0;
+      if (!cursor.ReadVarint(value))
+        return false;
+      canceled = value == 3;
+      return true;
+    }
+    return cursor.Skip(wire);
+  });
+}
 }  // namespace
 
 std::optional<std::string> RodaliesLine(std::string_view text)
@@ -270,7 +369,8 @@ std::optional<std::string> RodaliesLine(std::string_view text)
   {
     if (text[i] != 'R')
       continue;
-    if (i > 0 && std::isalnum(static_cast<unsigned char>(text[i - 1])))
+    // A digit may precede the code, as in Renfe trip ids such as 5177M77552R4.
+    if (i > 0 && std::isalpha(static_cast<unsigned char>(text[i - 1])))
       continue;
     size_t j = i + 1;
     if (j >= text.size() || !std::isdigit(static_cast<unsigned char>(text[j])))
@@ -316,7 +416,13 @@ std::optional<std::vector<RawTrain>> ParseGeotren(std::string_view json)
     train.m_lat = *lat;
     train.m_lon = *lon;
     train.m_destination = ReadText(Find(row, "desti"));
-    train.m_nextStop = FirstParada(ReadText(Find(row, "properes_parades")));
+    train.m_upcoming = AllParades(ReadText(Find(row, "properes_parades")));
+    if (!train.m_destination.empty() &&
+        std::find(train.m_upcoming.begin(), train.m_upcoming.end(), train.m_destination) == train.m_upcoming.end())
+      train.m_upcoming.push_back(train.m_destination);
+    if (!train.m_upcoming.empty())
+      train.m_nextStop = train.m_upcoming.front();
+    train.m_parkedAt = ReadText(Find(row, "estacionat_a"));
     trains.push_back(std::move(train));
   }
   return trains;
@@ -369,5 +475,74 @@ std::optional<std::vector<RawTrain>> ParseVehiclePositions(std::string_view byte
     trains.push_back(std::move(train));
   }
   return trains;
+}
+
+std::optional<std::vector<TripPass>> ParseTripUpdates(std::string_view bytes)
+{
+  std::vector<TripPass> trips;
+  Cursor cursor(bytes);
+  while (!cursor.Eof())
+  {
+    uint32_t field = 0;
+    uint32_t wire = 0;
+    if (!cursor.ReadTag(field, wire))
+      return std::nullopt;
+    if (field != 2 || wire != 2)
+    {
+      if (!cursor.Skip(wire))
+        return std::nullopt;
+      continue;
+    }
+    std::string_view entity;
+    if (!cursor.ReadSlice(entity))
+      return std::nullopt;
+    TripPass trip;
+    bool canceled = false;
+    bool sawUpdate = false;
+    if (!ParseMessage(entity, [&](Cursor & inner, uint32_t entityField, uint32_t entityWire)
+    {
+      if (entityField != 3 || entityWire != 2)
+        return inner.Skip(entityWire);
+      std::string_view update;
+      if (!inner.ReadSlice(update))
+        return false;
+      sawUpdate = true;
+      return ParseMessage(update, [&](Cursor & updateCursor, uint32_t updateField, uint32_t updateWire)
+      {
+        if (updateField == 1 && updateWire == 2)
+        {
+          std::string_view slice;
+          if (!updateCursor.ReadSlice(slice))
+            return false;
+          std::string tripId;
+          std::string routeId;
+          if (!ParseTripDescriptor(slice, tripId, routeId, canceled))
+            return false;
+          if (auto const line = FirstLine(tripId, routeId, {}, {}))
+            trip.m_line = *line;
+          return true;
+        }
+        if (updateField == 2 && updateWire == 2)
+        {
+          std::string_view slice;
+          if (!updateCursor.ReadSlice(slice))
+            return false;
+          StopVisit visit;
+          bool skipped = false;
+          if (!ParseStopVisit(slice, visit, skipped))
+            return false;
+          if (!skipped && !visit.m_stopId.empty() && visit.m_etaUnixSec > 0)
+            trip.m_stops.push_back(std::move(visit));
+          return true;
+        }
+        return updateCursor.Skip(updateWire);
+      });
+    }))
+      continue;
+    if (!sawUpdate || canceled || trip.m_line.empty() || trip.m_stops.empty())
+      continue;
+    trips.push_back(std::move(trip));
+  }
+  return trips;
 }
 }  // namespace commuter_live

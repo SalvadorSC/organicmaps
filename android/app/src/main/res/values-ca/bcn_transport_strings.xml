@@ -20,8 +20,8 @@
   <string name="metro_lines_title">Línies</string>
   <string name="metro_lines_summary">Es mostren al mapa. Totes les línies estan activades fins que en desactiveu una.</string>
   <string name="commuter_live_title">FGC i Rodalies en directe</string>
-  <string name="commuter_live_summary">Mostra els trens de FGC i Rodalies a l\'àrea de Barcelona, amb una fletxa de direcció. Les posicions venen de Geotren de FGC i de Renfe (CC BY 4.0). Sense clau de TMB. Respecta la configuració de dades mòbils. Desactivat per defecte.</string>
+  <string name="commuter_live_summary">Mostra els trens de FGC i Rodalies a l\'àrea de Barcelona, en cercles de color amb el codi de línia. En obrir una estació es veuen els propers trens. Les posicions venen de Geotren de FGC i de Renfe (CC BY 4.0). Sense clau de TMB. Respecta la configuració de dades mòbils. Desactivat per defecte.</string>
   <string name="fgc_lines_title">Línies de FGC</string>
   <string name="rodalies_lines_title">Línies de Rodalies</string>
-  <string name="commuter_lines_summary">Es mostren al mapa. Totes les línies estan activades fins que en desactiveu una. A part de les línies de metro.</string>
+  <string name="commuter_lines_summary">Es mostren al mapa quan activeu una línia. Totes les línies comencen desactivades. A part de les línies de metro.</string>
 </resources>

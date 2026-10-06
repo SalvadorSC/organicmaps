@@ -62,6 +62,9 @@ import app.organicmaps.sdk.bookmarks.data.TrackSelectionCandidate;
 import app.organicmaps.sdk.bus_live.BusArrival;
 import app.organicmaps.sdk.bus_live.BusArrivals;
 import app.organicmaps.sdk.bus_live.BusLive;
+import app.organicmaps.sdk.commuter_live.CommuterArrival;
+import app.organicmaps.sdk.commuter_live.CommuterArrivals;
+import app.organicmaps.sdk.commuter_live.CommuterLive;
 import app.organicmaps.sdk.downloader.CountryItem;
 import app.organicmaps.sdk.downloader.MapManager;
 import app.organicmaps.sdk.editor.Editor;
@@ -152,6 +155,19 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
         return;
       requestBusArrivals();
       if (!mBusKey.isEmpty())
+        mBusHandler.postDelayed(this, BUS_REFRESH_MS);
+    }
+  };
+  private int mCommuterRequestId;
+  private String mCommuterKey = "";
+  private final Runnable mCommuterTick = new Runnable() {
+    @Override
+    public void run()
+    {
+      if (mCommuterKey.isEmpty())
+        return;
+      requestCommuterArrivals();
+      if (!mCommuterKey.isEmpty())
         mBusHandler.postDelayed(this, BUS_REFRESH_MS);
     }
   };
@@ -445,6 +461,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     MwmApplication.from(requireContext()).getSensorHelper().removeListener(this);
     detachCountry();
     stopBusArrivals();
+    stopCommuterArrivals(true);
   }
 
   private void setCurrentCountry()
@@ -606,6 +623,7 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
     }
     refreshBikeShare();
     refreshBusArrivals();
+    refreshCommuterArrivals();
   }
 
   private void refreshBikeShare()
@@ -683,10 +701,15 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
 
   private void stopBusArrivals()
   {
+    stopBusArrivals(true);
+  }
+
+  private void stopBusArrivals(boolean hideView)
+  {
     mBusKey = "";
     ++mBusRequestId;
     mBusHandler.removeCallbacks(mBusTick);
-    if (mTvBusArrivals != null)
+    if (hideView && mTvBusArrivals != null)
       UiUtils.hide(mTvBusArrivals);
   }
 
@@ -700,9 +723,10 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
   {
     if (!canRequestBusArrivals())
     {
-      stopBusArrivals();
+      stopBusArrivals(!canRequestCommuterArrivals());
       return;
     }
+    stopCommuterArrivals(false);
 
     final String key = mMapObject.getLat() + ":" + mMapObject.getLon() + ":" + mMapObject.getTitle();
     if (key.equals(mBusKey))
@@ -786,6 +810,98 @@ public class PlacePageView extends Fragment implements View.OnClickListener, Vie
       return getString(R.string.bus_arrival_minutes, minutes);
     }
     return DateFormat.format("HH:mm", etaUnixSec * 1000L).toString();
+  }
+
+  private void stopCommuterArrivals(boolean hideView)
+  {
+    mCommuterKey = "";
+    ++mCommuterRequestId;
+    mBusHandler.removeCallbacks(mCommuterTick);
+    if (hideView && mTvBusArrivals != null)
+      UiUtils.hide(mTvBusArrivals);
+  }
+
+  private boolean canRequestCommuterArrivals()
+  {
+    return isAdded() && mMapObject != null && !mMapObject.isBusStop() && mMapObject.isRailStation()
+ && CommuterLive.isEnabled() && NetworkPolicy.getCurrentNetworkUsageStatus();
+  }
+
+  private void refreshCommuterArrivals()
+  {
+    if (canRequestBusArrivals() || !canRequestCommuterArrivals())
+    {
+      stopCommuterArrivals(false);
+      return;
+    }
+
+    final String key = mMapObject.getLat() + ":" + mMapObject.getLon() + ":" + mMapObject.getTitle();
+    if (key.equals(mCommuterKey))
+      return;
+
+    mCommuterKey = key;
+    mBusHandler.removeCallbacks(mCommuterTick);
+    UiUtils.hide(mTvBusArrivals);
+    requestCommuterArrivals();
+    mBusHandler.postDelayed(mCommuterTick, BUS_REFRESH_MS);
+  }
+
+  private void requestCommuterArrivals()
+  {
+    if (!canRequestCommuterArrivals())
+    {
+      stopCommuterArrivals(!canRequestBusArrivals());
+      return;
+    }
+
+    final int requestId = ++mCommuterRequestId;
+    final double lat = mMapObject.getLat();
+    final double lon = mMapObject.getLon();
+    final String name = mMapObject.getTitle();
+    sBusExecutor.execute(() -> {
+      final CommuterArrivals arrivals = CommuterLive.lookup(lat, lon, name);
+      UiThread.run(() -> showCommuterArrivals(requestId, arrivals));
+    });
+  }
+
+  private void showCommuterArrivals(int requestId, @Nullable CommuterArrivals arrivals)
+  {
+    if (!isAdded() || requestId != mCommuterRequestId || mTvBusArrivals == null || canRequestBusArrivals())
+      return;
+    if (arrivals == null || arrivals.mStatus == CommuterArrivals.NOT_APPLICABLE)
+    {
+      UiUtils.hide(mTvBusArrivals);
+      return;
+    }
+    if (arrivals.mStatus != CommuterArrivals.OK || arrivals.mArrivals == null || arrivals.mArrivals.length == 0)
+    {
+      mTvBusArrivals.setText(R.string.bus_arrivals_no_data);
+      UiUtils.show(mTvBusArrivals);
+      return;
+    }
+    mTvBusArrivals.setText(formatCommuterArrivals(arrivals));
+    UiUtils.show(mTvBusArrivals);
+  }
+
+  @NonNull
+  private CharSequence formatCommuterArrivals(@NonNull CommuterArrivals arrivals)
+  {
+    final StringBuilder builder = new StringBuilder();
+    final long nowSec = System.currentTimeMillis() / 1000L;
+    for (CommuterArrival arrival : arrivals.mArrivals)
+    {
+      if (arrival == null || TextUtils.isEmpty(arrival.mLine))
+        continue;
+      if (builder.length() > 0)
+        builder.append('\n');
+      builder.append(arrival.mLine);
+      if (!TextUtils.isEmpty(arrival.mDestination))
+        builder.append(" · ").append(arrival.mDestination);
+      builder.append(" · ").append(formatBusEta(arrival.mEtaUnixSec, nowSec));
+    }
+    if (builder.length() == 0)
+      return getString(R.string.bus_arrivals_no_data);
+    return builder;
   }
 
   void refreshCategoryPreview()

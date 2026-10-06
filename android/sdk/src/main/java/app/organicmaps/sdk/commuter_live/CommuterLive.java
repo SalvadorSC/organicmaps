@@ -34,6 +34,18 @@ public final class CommuterLive
     return snapshot;
   }
 
+  /** Next trains at a station. Blocks, so call it off the UI thread. */
+  @Nullable
+  public static CommuterArrivals lookup(double lat, double lon, @Nullable String name)
+  {
+    CommuterArrivals arrivals = new CommuterArrivals();
+    if (!nativeLookup(lat, lon, name == null ? "" : name, arrivals))
+      return null;
+    if (arrivals.mArrivals == null)
+      arrivals.mArrivals = new CommuterArrival[0];
+    return arrivals;
+  }
+
   private static native boolean nativeIsEnabled();
 
   private static native void nativeSetEnabled(boolean enabled);
@@ -41,4 +53,6 @@ public final class CommuterLive
   private static native void nativeSetTrains(@Nullable CommuterTrain[] trains);
 
   private static native boolean nativePoll(CommuterSnapshot snapshot);
+
+  private static native boolean nativeLookup(double lat, double lon, String name, CommuterArrivals arrivals);
 }

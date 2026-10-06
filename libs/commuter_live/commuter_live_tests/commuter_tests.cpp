@@ -4,6 +4,9 @@
 #include "commuter_live/names.hpp"
 #include "commuter_live/parser.hpp"
 #include "commuter_live/service.hpp"
+#include "commuter_live/snap.hpp"
+
+#include "geometry/distance_on_sphere.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -52,6 +55,31 @@ void AppendMessage(std::string & out, uint32_t field, std::string const & messag
   out.append(message);
 }
 
+void AppendInt(std::string & out, uint32_t field, uint64_t value)
+{
+  AppendTag(out, field, 0);
+  AppendVarint(out, value);
+}
+
+std::string TripFeed(uint64_t etaUnixSec)
+{
+  std::string event;
+  AppendInt(event, 2, etaUnixSec);
+  std::string stop;
+  AppendMessage(stop, 2, event);
+  AppendString(stop, 4, "71600");
+  std::string descriptor;
+  AppendString(descriptor, 1, "5177M77552R4");
+  std::string update;
+  AppendMessage(update, 1, descriptor);
+  AppendMessage(update, 2, stop);
+  std::string entity;
+  AppendMessage(entity, 3, update);
+  std::string feed;
+  AppendMessage(feed, 2, entity);
+  return feed;
+}
+
 std::string Vehicle(std::string_view entityId, std::string_view label, float lat, float lon,
                     std::optional<float> bearing)
 {
@@ -78,7 +106,9 @@ UNIT_TEST(RodaliesLine_ParsesLabel)
   TEST_EQUAL(*commuter_live::RodaliesLine("R4-77552"), std::string("R4"), ());
   TEST_EQUAL(*commuter_live::RodaliesLine("R2S-28378-PLATF.(2)"), std::string("R2S"), ());
   TEST_EQUAL(*commuter_live::RodaliesLine("VP_R4-77552"), std::string("R4"), ());
-  TEST_EQUAL(*commuter_live::RodaliesLine("5177M77552R4"), std::string("R4"), ());
+  auto const tripLine = commuter_live::RodaliesLine("5177M77552R4");
+  TEST(tripLine.has_value(), ());
+  TEST_EQUAL(*tripLine, std::string("R4"), ());
   TEST(!commuter_live::RodaliesLine("C5-23731").has_value(), ());
   TEST(!commuter_live::RodaliesLine("PLATF.(2)").has_value(), ());
 }
@@ -222,5 +252,101 @@ UNIT_TEST(Poll_BearingFromSecondFixAndDropsDistantRenfe)
 
   auto const cached = service.Poll();
   TEST_EQUAL(cached.m_trains.size(), 2, ());
+}
+
+UNIT_TEST(Snap_ProjectsOntoLine)
+{
+  commuter_live::RailTrack line;
+  line.m_ref = "R4";
+  line.m_shape = {{41.38, 2.15}, {41.42, 2.15}};
+  double const metresPerDeg = 111320.0 * std::cos(41.40 * 0.017453292519943295);
+  double const dlon = 33.0 / metresPerDeg;
+  auto const snapped = commuter_live::SnapToTracks(41.40, 2.15 + dlon, "R4", {line});
+  TEST(snapped.m_snapped, ());
+  double const ontoLine = ms::DistanceOnEarth({snapped.m_lat, snapped.m_lon}, {41.40, 2.15});
+  TEST_LESS(ontoLine, 15.0, ());
+  double const moved = ms::DistanceOnEarth({41.40, 2.15 + dlon}, {snapped.m_lat, snapped.m_lon});
+  TEST_GREATER(moved, 15.0, ());
+
+  commuter_live::RailTrack anonymous;
+  anonymous.m_shape = line.m_shape;
+  auto const nearRail = commuter_live::SnapToTracks(41.40, 2.15 + 40.0 / metresPerDeg, "R4", {anonymous});
+  TEST(nearRail.m_snapped, ());
+  TEST_LESS(ms::DistanceOnEarth({nearRail.m_lat, nearRail.m_lon}, {41.40, 2.15}), 15.0, ());
+  auto const farRail = commuter_live::SnapToTracks(41.40, 2.15 + 400.0 / metresPerDeg, "R4", {anonymous});
+  TEST(!farRail.m_snapped, ());
+
+  commuter_live::RailTrack other;
+  other.m_ref = "S1";
+  other.m_shape = line.m_shape;
+  auto const wrong = commuter_live::SnapToTracks(41.40, 2.15 + dlon, "R4", {other});
+  TEST(!wrong.m_snapped, ());
+
+  commuter_live::RailTrack colored;
+  colored.m_ref = "L6";
+  colored.m_colored = true;
+  colored.m_shape = {{41.0, 2.0}, {41.1, 2.0}};
+  commuter_live::RailTrack grey = line;
+  grey.m_colored = false;
+  auto const strokes = commuter_live::StrokeTracks({colored, grey}, {"L6", "R4"});
+  TEST_EQUAL(strokes.size(), 1, ());
+  TEST_EQUAL(strokes[0].m_ref, std::string("R4"), ());
+}
+
+UNIT_TEST(Lookup_GeotrenStopAndRenfeTrip)
+{
+  uint64_t constexpr kEta = 2000000000;
+  auto const parsed = commuter_live::ParseTripUpdates(TripFeed(kEta));
+  TEST(parsed.has_value(), ());
+  TEST_EQUAL(parsed->size(), 1, ());
+  if (parsed && !parsed->empty())
+  {
+    TEST_EQUAL(parsed->front().m_line, std::string("R4"), ());
+    TEST_EQUAL(parsed->front().m_stops.size(), 1, ());
+    TEST_EQUAL(parsed->front().m_stops.front().m_stopId, std::string("71600"), ());
+  }
+  auto const http = [&](std::string const & url) -> std::optional<std::string>
+  {
+    if (url.find("posicionament") != std::string::npos)
+    {
+      return std::string(
+          "{\"results\":[{\"id\":\"t1\",\"lin\":\"S1\",\"geo_point_2d\":{\"lon\":2.16,\"lat\":41.39},"
+          "\"desti\":\"TR\",\"properes_parades\":\"{\\\"parada\\\": \\\"PC\\\"}\"}]}");
+    }
+    if (url.find("trip_updates") != std::string::npos)
+      return TripFeed(kEta);
+    return std::string();
+  };
+  commuter_live::CommuterService service(http, [] { return std::chrono::steady_clock::time_point{}; });
+  auto const fgc = service.LookupArrivals(41.385632, 2.168720, "Placa Catalunya");
+  TEST_EQUAL(static_cast<int>(fgc.m_status), static_cast<int>(commuter_live::ArrivalStatus::Ok), ());
+  bool sawS1 = false;
+  int64_t const now =
+      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  for (auto const & arrival : fgc.m_arrivals)
+  {
+    if (arrival.m_line != "S1")
+      continue;
+    sawS1 = true;
+    TEST_EQUAL(arrival.m_destination, std::string("Terrassa - Rambla"), ());
+    TEST_ALMOST_EQUAL_ABS(static_cast<double>(arrival.m_etaUnixSec), static_cast<double>(now + 120), 5.0, ());
+  }
+  TEST(sawS1, ());
+
+  auto const rodalies = service.LookupArrivals(41.186210, 1.524804, "");
+  TEST_EQUAL(static_cast<int>(rodalies.m_status), static_cast<int>(commuter_live::ArrivalStatus::Ok), ());
+  bool sawR4 = false;
+  for (auto const & arrival : rodalies.m_arrivals)
+  {
+    if (arrival.m_line != "R4")
+      continue;
+    sawR4 = true;
+    TEST_EQUAL(arrival.m_destination, std::string("Sant Vicenç de Calders"), ());
+    TEST_EQUAL(arrival.m_etaUnixSec, static_cast<int64_t>(kEta), ());
+  }
+  TEST(sawR4, ());
+
+  auto const none = service.LookupArrivals(37.39, -5.98, "Sevilla");
+  TEST_EQUAL(static_cast<int>(none.m_status), static_cast<int>(commuter_live::ArrivalStatus::NotApplicable), ());
 }
 }  // namespace commuter_tests

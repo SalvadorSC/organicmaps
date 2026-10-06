@@ -127,6 +127,7 @@ public:
   void SetVisibleViewport(m2::RectD const & rect) const;
   // Estimated metro arrows. Drawn by the frontend renderer with the frame's screen.
   void SetMetroTrains(std::vector<MetroTrainMarker> trains);
+  void SetCommuterStrokes(std::vector<MetroTrainStroke> strokes);
 
   void AddTouchEvent(TouchEvent const & event);
   void Scale(double factor, m2::PointD const & pxPoint, bool isAnim);

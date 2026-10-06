@@ -7,8 +7,13 @@ set(SRC
   names.hpp
   parser.cpp
   parser.hpp
+  scheme_data.cpp
+  scheme_data.hpp
   service.cpp
   service.hpp
+  snap.cpp
+  snap.hpp
+  stations.cpp
   types.hpp
 )
 

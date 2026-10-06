@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 import androidx.annotation.NonNull;
 import androidx.preference.PreferenceManager;
 
-/** Which FGC and Rodalies lines are drawn. Missing keys stay on. */
+/** Which FGC and Rodalies lines are drawn. Missing keys stay off. */
 public final class CommuterLineSelection
 {
   public static final String FGC = "fgc";
@@ -34,7 +34,7 @@ public final class CommuterLineSelection
 
   public static boolean isShown(@NonNull Context context, @NonNull String source, @NonNull String line)
   {
-    return prefs(context).getBoolean(key(source, line), true);
+    return prefs(context).getBoolean(key(source, line), false);
   }
 
   @NonNull

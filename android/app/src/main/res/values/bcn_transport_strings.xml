@@ -20,8 +20,8 @@
   <string name="metro_lines_title">Lines</string>
   <string name="metro_lines_summary">Shown on the map. Every line is on until you turn it off.</string>
   <string name="commuter_live_title">Live FGC and Rodalies</string>
-  <string name="commuter_live_summary">Shows live FGC and Rodalies trains in the Barcelona area, with a direction arrow. Positions come from FGC Geotren and Renfe (CC BY 4.0). No TMB key. Respects the mobile data setting. Off by default.</string>
+  <string name="commuter_live_summary">Shows live FGC and Rodalies trains in the Barcelona area as coloured circles with the line code. Opening a station shows the next trains. Positions come from FGC Geotren and Renfe (CC BY 4.0). No TMB key. Respects the mobile data setting. Off by default.</string>
   <string name="fgc_lines_title">FGC lines</string>
   <string name="rodalies_lines_title">Rodalies lines</string>
-  <string name="commuter_lines_summary">Shown on the map. Every line is on until you turn it off. Separate from the metro lines.</string>
+  <string name="commuter_lines_summary">Shown on the map when you turn a line on. Every line starts off. Separate from the metro lines.</string>
 </resources>

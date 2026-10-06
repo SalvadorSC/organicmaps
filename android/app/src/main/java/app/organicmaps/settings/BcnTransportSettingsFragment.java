@@ -51,7 +51,7 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     int size = (int) (18 * density);
     for (int i = 0; i < MetroLineSelection.NAMES.length; ++i)
       lines.addPreference(lineBox(MetroLineSelection.NAMES[i], MetroLineSelection.key(MetroLineSelection.NAMES[i]),
-                                  MetroLineSelection.COLORS[i], density, size));
+                                  MetroLineSelection.COLORS[i], density, size, true));
 
     TwoStatePreference commuter = findPreference(getString(R.string.pref_commuter_live));
     if (commuter == null)
@@ -78,21 +78,22 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
       fgc.addPreference(
           lineBox(CommuterLineSelection.FGC_NAMES[i],
                   CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
-                  CommuterLineSelection.FGC_COLORS[i], density, size));
+                  CommuterLineSelection.FGC_COLORS[i], density, size, false));
     for (int i = 0; i < CommuterLineSelection.RODALIES_NAMES.length; ++i)
       rodalies.addPreference(
           lineBox(CommuterLineSelection.RODALIES_NAMES[i],
                   CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
-                  CommuterLineSelection.RODALIES_COLORS[i], density, size));
+                  CommuterLineSelection.RODALIES_COLORS[i], density, size, false));
   }
 
   @NonNull
-  private CheckBoxPreference lineBox(@NonNull String title, @NonNull String key, int color, float density, int size)
+  private CheckBoxPreference lineBox(@NonNull String title, @NonNull String key, int color, float density, int size,
+                                     boolean defaultOn)
   {
     CheckBoxPreference box = new CheckBoxPreference(requireContext());
     box.setKey(key);
     box.setTitle(title);
-    box.setDefaultValue(true);
+    box.setDefaultValue(defaultOn);
     box.setPersistent(true);
     GradientDrawable badge = new GradientDrawable();
     badge.setShape(GradientDrawable.OVAL);
