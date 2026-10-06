@@ -570,6 +570,60 @@ UNIT_TEST(Estimate_HeadingSkipsJoinSpur)
   TEST_LESS(HeadingDelta(west[0].m_headingDeg, 180.0), 20.0, (west[0].m_headingDeg));
 }
 
+// Two services on one NW–SE segment, with an east-west lead-in at the vertex.
+// Stopping the 25 m walk inside that lead-in made them face each other
+// horizontally (the Horta bowtie) instead of opposite ways along the segment.
+UNIT_TEST(Estimate_HeadingHortaBowtie)
+{
+  std::string_view constexpr kStations = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.16000,41.43000]},
+       "properties":{"CODI_ESTACIO":1,"NOM_ESTACIO":"Horta","ORDRE_ESTACIO":1,"NOM_LINIA":"L5","COLOR_LINIA":"005A97"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.16400,41.42600]},
+       "properties":{"CODI_ESTACIO":2,"NOM_ESTACIO":"Carmel","ORDRE_ESTACIO":2,"NOM_LINIA":"L5","COLOR_LINIA":"005A97"}},
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[2.15600,41.43400]},
+       "properties":{"CODI_ESTACIO":3,"NOM_ESTACIO":"Vilapicina","ORDRE_ESTACIO":0,"NOM_LINIA":"L5","COLOR_LINIA":"005A97"}}
+    ]
+  })";
+  // Horta, 75 m east, then the NW–SE run to Carmel. The lead-in is long enough
+  // that a 25 m walk stops inside it.
+  std::string_view constexpr kLines = R"({
+    "type":"FeatureCollection",
+    "features":[
+      {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[2.15600,41.43400],[2.16000,41.43000],[2.16090,41.43000],[2.16400,41.42600]]]},
+       "properties":{"NOM_LINIA":"L5","COLOR_LINIA":"005A97","NOM_TIPUS_TRANSPORT":"METRO"}}
+    ]
+  })";
+  auto stations = metro_live::ParseStations(kStations);
+  auto lines = metro_live::ParseLines(kLines);
+  TEST(stations.has_value(), ());
+  TEST(lines.has_value(), ());
+  auto const network = metro_live::BuildNetwork(*lines, *stations);
+  // Full segment still ahead: the train is at Horta, outbound toward Carmel.
+  auto const outbound = metro_live::EstimateTrains(network, {Row("L5", "1", "se", 2, kNow + 87, "Carmel")}, kNow);
+  // Arrived at Horta from Carmel, so the approach is the same segment inbound.
+  auto const inbound = metro_live::EstimateTrains(network, {Row("L5", "2", "nw", 1, kNow, "Vilapicina")}, kNow);
+  TEST_EQUAL(outbound.size(), 1, ());
+  TEST_EQUAL(inbound.size(), 1, ());
+  // Station chord Horta → Carmel is about 143° (NW–SE), not east-west.
+  double constexpr kAxis = 143.0;
+  TEST_LESS(HeadingDelta(outbound[0].m_headingDeg, kAxis), 20.0, (outbound[0].m_headingDeg));
+  TEST_LESS(HeadingDelta(inbound[0].m_headingDeg, kAxis + 180.0), 20.0, (inbound[0].m_headingDeg));
+  TEST_LESS(std::abs(HeadingDelta(outbound[0].m_headingDeg, inbound[0].m_headingDeg) - 180.0), 20.0,
+            (outbound[0].m_headingDeg, inbound[0].m_headingDeg));
+  TEST_GREATER(HeadingDelta(outbound[0].m_headingDeg, 90.0), 30.0, (outbound[0].m_headingDeg));
+  TEST_GREATER(HeadingDelta(inbound[0].m_headingDeg, 270.0), 30.0, (inbound[0].m_headingDeg));
+  // Between the stations the same arc is used, so the pair stays on that axis.
+  auto const between = metro_live::EstimateTrains(network, {Row("L5", "1", "se", 2, kNow + 43, "Carmel")}, kNow);
+  auto const betweenBack =
+      metro_live::EstimateTrains(network, {Row("L5", "2", "nw", 1, kNow + 43, "Vilapicina")}, kNow);
+  TEST_EQUAL(between.size(), 1, ());
+  TEST_EQUAL(betweenBack.size(), 1, ());
+  TEST_LESS(HeadingDelta(between[0].m_headingDeg, kAxis), 20.0, (between[0].m_headingDeg));
+  TEST_LESS(HeadingDelta(betweenBack[0].m_headingDeg, kAxis + 180.0), 20.0, (betweenBack[0].m_headingDeg));
+}
+
 double RadiansDelta(double a, double b)
 {
   double constexpr kPi = 3.141592653589793;
@@ -627,9 +681,15 @@ UNIT_TEST(ChevronScreenAngle_MatchesTravel)
   float const eastAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(east[0].m_headingDeg));
   float const westAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(west[0].m_headingDeg));
   // North-up: east travel puts the tip to the right, west travel to the left.
+  // North and northwest lock the -Y tip against a reflection, which would
+  // leave east-west alone and turn a diagonal track into a bowtie.
   TEST_LESS(RadiansDelta(eastAngle, kPi / 2.0), kFew, (eastAngle));
   TEST_LESS(RadiansDelta(westAngle, -kPi / 2.0), kFew, (westAngle));
   TEST_LESS(RadiansDelta(eastAngle - westAngle, kPi), kFew, (eastAngle, westAngle));
+  float const northAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(0.0));
+  float const nwAngle = df::ChevronScreenAzimuth(screen, merc, headingRad(315.0));
+  TEST_LESS(RadiansDelta(northAngle, 0.0), kFew, (northAngle));
+  TEST_LESS(RadiansDelta(nwAngle, -kPi / 4.0), kFew, (nwAngle));
 
   screen.SetAngle(kPi / 2.0);
   float const rotated = df::ChevronScreenAzimuth(screen, merc, headingRad(east[0].m_headingDeg));

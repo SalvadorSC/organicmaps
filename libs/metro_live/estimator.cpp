@@ -9,6 +9,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace metro_live
 {
@@ -208,34 +209,124 @@ double BearingDeg(ms::LatLon const & from, ms::LatLon const & to)
   return deg;
 }
 
-// Bearing of a walk from `at` toward `toward` along the polyline. Out-and-back
-// joins (a few metres at a station) do not move the sample, so they cannot
-// steal the arrow. `travelForward` is false when the walk steps back along the
-// approach and the arrow should still point toward `at`.
-bool DisplacementBearing(IndexedLine const & line, double at, double toward, bool travelForward, double & bearing)
+double AngleDelta(double a, double b)
+{
+  double d = std::fmod(std::abs(a - b), 360.0);
+  if (d > 180.0)
+    d = 360.0 - d;
+  return d;
+}
+
+struct AlongPoint
+{
+  double m_along = 0;
+  ms::LatLon m_point;
+};
+
+// Points from `fromAlong` to `toAlong`, with out-and-back joins removed.
+// A join longer than the 25 m sample used to become the arrow: both services
+// then face each other along the join instead of along the track.
+std::vector<AlongPoint> CleanArc(IndexedLine const & line, double fromAlong, double toAlong)
 {
   double constexpr kStepM = 8.0;
-  double constexpr kWantM = 25.0;
-  ms::LatLon const origin = PointAt(line, at);
-  double const sign = toward >= at ? 1.0 : -1.0;
-  double pos = at;
-  ms::LatLon last = origin;
-  for (int n = 0; n < 64; ++n)
+  double constexpr kReturnM = 20.0;
+  double constexpr kMinLoopM = 12.0;
+  double constexpr kMaxLoopM = 150.0;
+  std::vector<AlongPoint> raw;
+  double const sign = toAlong >= fromAlong ? 1.0 : -1.0;
+  raw.push_back({fromAlong, PointAt(line, fromAlong)});
+  double pos = fromAlong;
+  for (int n = 0; n < 4000; ++n)
   {
-    if ((toward - pos) * sign <= 0.5)
+    if ((toAlong - pos) * sign <= 0.5)
       break;
     double next = pos + sign * kStepM;
-    if ((next - toward) * sign > 0)
-      next = toward;
-    last = PointAt(line, next);
-    if (ms::DistanceOnEarth(origin, last) >= kWantM || std::abs(next - pos) < 0.1)
+    if ((next - toAlong) * sign > 0)
+      next = toAlong;
+    if (std::abs(next - pos) < 0.05)
       break;
     pos = next;
+    raw.push_back({pos, PointAt(line, pos)});
   }
-  if (ms::DistanceOnEarth(origin, last) < 1.0)
+
+  std::vector<AlongPoint> clean;
+  clean.reserve(raw.size());
+  for (auto const & sample : raw)
+  {
+    clean.push_back(sample);
+    for (int i = static_cast<int>(clean.size()) - 2; i >= 0; --i)
+    {
+      double const loop = std::abs(clean.back().m_along - clean[static_cast<size_t>(i)].m_along);
+      if (loop > kMaxLoopM)
+        break;
+      if (loop >= kMinLoopM &&
+          ms::DistanceOnEarth(clean[static_cast<size_t>(i)].m_point, clean.back().m_point) <= kReturnM)
+      {
+        clean.resize(static_cast<size_t>(i) + 1);
+        break;
+      }
+    }
+  }
+  return clean;
+}
+
+size_t NearestSample(std::vector<AlongPoint> const & arc, double along)
+{
+  size_t best = 0;
+  double bestDistance = 1e100;
+  for (size_t i = 0; i < arc.size(); ++i)
+  {
+    double const distance = std::abs(arc[i].m_along - along);
+    if (distance < bestDistance)
+    {
+      bestDistance = distance;
+      best = i;
+    }
+  }
+  return best;
+}
+
+bool ChordBearing(std::vector<AlongPoint> const & arc, size_t from, size_t to, double & bearing)
+{
+  if (from >= arc.size() || to >= arc.size() || from == to)
     return false;
-  bearing = travelForward ? BearingDeg(origin, last) : BearingDeg(last, origin);
+  if (ms::DistanceOnEarth(arc[from].m_point, arc[to].m_point) < 1.0)
+    return false;
+  bearing = BearingDeg(arc[from].m_point, arc[to].m_point);
   return true;
+}
+
+// Step along the cleaned arc until the geographic chord is at least 25 m.
+size_t WalkNet(std::vector<AlongPoint> const & arc, size_t index, int step)
+{
+  double constexpr kWantM = 25.0;
+  size_t pos = index;
+  while (step > 0 ? pos + 1 < arc.size() : pos > 0)
+  {
+    size_t const next = static_cast<size_t>(static_cast<int>(pos) + step);
+    if (ms::DistanceOnEarth(arc[index].m_point, arc[next].m_point) >= kWantM)
+      return next;
+    pos = next;
+  }
+  return pos;
+}
+
+// Direction of the station-to-station arc away from its vertices.
+double MidlineBearing(std::vector<AlongPoint> const & arc)
+{
+  if (arc.size() < 2)
+    return 0;
+  size_t const begin = arc.size() / 4;
+  size_t end = (arc.size() * 3) / 4;
+  if (end <= begin)
+    end = arc.size() - 1;
+  if (ms::DistanceOnEarth(arc[begin].m_point, arc[end].m_point) < 25.0)
+    end = arc.size() - 1;
+  double bearing = 0;
+  size_t const from = begin == end ? 0 : begin;
+  if (!ChordBearing(arc, from, end, bearing))
+    ChordBearing(arc, 0, arc.size() - 1, bearing);
+  return bearing;
 }
 
 double HeadingDeg(IndexedLine const & line, int fromIndex, int toIndex, double along)
@@ -245,18 +336,38 @@ double HeadingDeg(IndexedLine const & line, int fromIndex, int toIndex, double a
     return 0;
   auto const & from = line.m_stations[static_cast<size_t>(fromIndex)];
   auto const & to = line.m_stations[static_cast<size_t>(toIndex)];
-  if (from.m_alongM >= 0 && to.m_alongM >= 0 && line.m_shape.size() >= 2 && line.m_alongM.size() == line.m_shape.size())
+  if (from.m_alongM < 0 || to.m_alongM < 0 || line.m_shape.size() < 2 || line.m_alongM.size() != line.m_shape.size())
+    return BearingDeg(from.m_station.m_point, to.m_station.m_point);
+
+  // Previous station → next station only. The sample never follows a join that
+  // lives on another part of a doubled polyline.
+  auto const arc = CleanArc(line, from.m_alongM, to.m_alongM);
+  if (arc.size() < 2)
+    return BearingDeg(from.m_station.m_point, to.m_station.m_point);
+
+  double const mid = MidlineBearing(arc);
+  size_t const at = NearestSample(arc, along);
+  size_t const ahead = WalkNet(arc, at, +1);
+  double local = 0;
+  bool haveLocal = ChordBearing(arc, at, ahead, local);
+  if (!haveLocal)
   {
-    double const at = std::clamp(along, std::min(from.m_alongM, to.m_alongM), std::max(from.m_alongM, to.m_alongM));
-    double bearing = 0;
-    // Toward the next stop. At a terminus this walk has no room, so the
-    // following call uses the inbound approach instead of a zero bearing.
-    if (DisplacementBearing(line, at, to.m_alongM, true, bearing))
-      return bearing;
-    if (DisplacementBearing(line, at, from.m_alongM, false, bearing))
-      return bearing;
+    // At the next-stop end of the arc (platform or terminus): face along the
+    // inbound approach. Outbound is the forward chord above.
+    size_t const behind = WalkNet(arc, at, -1);
+    haveLocal = ChordBearing(arc, behind, at, local);
   }
-  return BearingDeg(from.m_station.m_point, to.m_station.m_point);
+  if (!haveLocal)
+    return mid;
+
+  // A vertex lead-in can run tens of metres off the segment the eye follows.
+  // Near either station, keep the arc's midline when the local step disagrees.
+  double constexpr kVertexM = 100.0;
+  double const fromEnd =
+      std::min(std::abs(arc[at].m_along - arc.front().m_along), std::abs(arc[at].m_along - arc.back().m_along));
+  if (fromEnd <= kVertexM && AngleDelta(local, mid) > 40.0)
+    return mid;
+  return local;
 }
 }  // namespace
 
