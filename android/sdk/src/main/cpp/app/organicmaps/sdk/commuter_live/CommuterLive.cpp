@@ -450,6 +450,10 @@ std::vector<df::MetroTrainStroke> StrokesFor(std::vector<std::string> const & li
     std::lock_guard<std::mutex> const lock(g_trackMutex);
     tracks = g_tracks;
   }
+  // Poll fills g_tracks. Before that, the bundled FGC and Rodalies shapes
+  // are enough to draw an enabled corridor.
+  if (tracks.empty())
+    tracks = commuter_live::SchemeTracks();
   std::vector<df::MetroTrainStroke> strokes;
   for (auto const & corridor : commuter_live::SharedStrokes(tracks, lines))
   {
@@ -538,7 +542,8 @@ JNIEXPORT void Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativeSetEna
 }
 
 JNIEXPORT void Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativeSetTrains(JNIEnv * env, jclass,
-                                                                                    jobjectArray trains)
+                                                                                    jobjectArray trains,
+                                                                                    jobjectArray lineArray)
 {
   if (!g_framework)
     return;
@@ -581,10 +586,27 @@ JNIEXPORT void Java_app_organicmaps_sdk_commuter_1live_CommuterLive_nativeSetTra
     }
   }
   std::vector<std::string> lines;
-  lines.reserve(markers.size());
-  for (auto const & marker : markers)
-    if (!marker.m_label.empty())
-      lines.push_back(marker.m_label);
+  if (lineArray != nullptr)
+  {
+    jsize const lineCount = env->GetArrayLength(lineArray);
+    lines.reserve(static_cast<size_t>(lineCount));
+    for (jsize i = 0; i < lineCount; ++i)
+    {
+      jni::ScopedLocalRef<jstring> const text(env, static_cast<jstring>(env->GetObjectArrayElement(lineArray, i)));
+      if (text.get() == nullptr)
+        continue;
+      std::string line = jni::ToNativeString(env, text.get());
+      if (!line.empty())
+        lines.push_back(std::move(line));
+    }
+  }
+  else
+  {
+    lines.reserve(markers.size());
+    for (auto const & marker : markers)
+      if (!marker.m_label.empty())
+        lines.push_back(marker.m_label);
+  }
   if (auto * framework = frm())
   {
     framework->SetCommuterTrains(std::move(markers), std::move(keys));

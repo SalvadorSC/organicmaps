@@ -76,23 +76,32 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     screen.addPreference(rodalies);
     for (int i = 0; i < CommuterLineSelection.FGC_NAMES.length; ++i)
       fgc.addPreference(
-          commuterLine(CommuterLineSelection.FGC_NAMES[i],
-                       CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
-                       CommuterLineSelection.FGC_COLORS[i], density, size));
+          lineBox(CommuterLineSelection.FGC_NAMES[i],
+                  CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
+                  CommuterLineSelection.FGC_COLORS[i], density, size, false));
     for (int i = 0; i < CommuterLineSelection.RODALIES_NAMES.length; ++i)
-      rodalies.addPreference(commuterLine(
-          CommuterLineSelection.RODALIES_NAMES[i],
-          CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
-          CommuterLineSelection.RODALIES_COLORS[i], density, size));
+      rodalies.addPreference(
+          lineBox(CommuterLineSelection.RODALIES_NAMES[i],
+                  CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
+                  CommuterLineSelection.RODALIES_COLORS[i], density, size, false));
+    // The master switch lives on this screen, but setDependency() looks it up
+    // before the new checkbox is attached and crashes. Toggle the lists here.
+    setCommuterLinesEnabled(CommuterLive.isEnabled());
   }
 
-  @NonNull
-  private CheckBoxPreference commuterLine(@NonNull String title, @NonNull String key, int color, float density,
-                                          int size)
+  private void setCommuterLinesEnabled(boolean enabled)
   {
-    CheckBoxPreference box = lineBox(title, key, color, density, size, false);
-    box.setDependency(getString(R.string.pref_commuter_live));
-    return box;
+    setGroupEnabled(findPreference(getString(R.string.pref_fgc_lines)), enabled);
+    setGroupEnabled(findPreference(getString(R.string.pref_rodalies_lines)), enabled);
+  }
+
+  private static void setGroupEnabled(@Nullable PreferenceCategory group, boolean enabled)
+  {
+    if (group == null)
+      return;
+    group.setEnabled(enabled);
+    for (int i = 0; i < group.getPreferenceCount(); ++i)
+      group.getPreference(i).setEnabled(enabled);
   }
 
   @NonNull
@@ -142,9 +151,12 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     final TwoStatePreference commuterLive = getPreference(getString(R.string.pref_commuter_live));
     commuterLive.setChecked(CommuterLive.isEnabled());
     commuterLive.setOnPreferenceChangeListener((preference, newValue) -> {
-      CommuterLive.setEnabled((Boolean) newValue);
+      final boolean enabled = (Boolean) newValue;
+      CommuterLive.setEnabled(enabled);
+      setCommuterLinesEnabled(enabled);
       return true;
     });
+    setCommuterLinesEnabled(commuterLive.isChecked());
 
     final EditTextPreference appId = getPreference(getString(R.string.pref_tmb_app_id));
     appId.setText(BusLive.getTmbAppId());

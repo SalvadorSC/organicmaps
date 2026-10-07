@@ -7,6 +7,7 @@ set(SRC
   names.hpp
   parser.cpp
   parser.hpp
+  fgc_scheme_data.cpp
   scheme_data.cpp
   scheme_data.hpp
   service.cpp

@@ -3,6 +3,7 @@
 #include "commuter_live/bearing.hpp"
 #include "commuter_live/names.hpp"
 #include "commuter_live/parser.hpp"
+#include "commuter_live/scheme_data.hpp"
 #include "commuter_live/service.hpp"
 #include "commuter_live/snap.hpp"
 
@@ -362,6 +363,45 @@ UNIT_TEST(SharedStrokes_OneRibbonForSharedCorridor)
   }
   TEST(shared, ());
   TEST(tail, ());
+}
+
+UNIT_TEST(SchemeTracks_StrokesFgcEvenWhenSubwayIsColoured)
+{
+  auto const tracks = commuter_live::SchemeTracks();
+  bool sawL6 = false;
+  bool sawS1 = false;
+  for (auto const & track : tracks)
+  {
+    if (track.m_ref == "L6")
+    {
+      sawL6 = true;
+      TEST(!track.m_colored, ());
+      TEST_GREATER(track.m_shape.size(), 2, ());
+      TEST_LESS(std::abs(track.m_shape.front().m_lat - 41.39), 0.05, ());
+    }
+    if (track.m_ref == "S1")
+    {
+      sawS1 = true;
+      TEST_GREATER(track.m_shape.size(), 10, ());
+    }
+  }
+  TEST(sawL6, ());
+  TEST(sawS1, ());
+
+  auto const strokes = commuter_live::SharedStrokes(tracks, {"L6", "L7", "S1"});
+  TEST(!strokes.empty(), ());
+  bool strokedL6 = false;
+  bool strokedS1 = false;
+  for (auto const & stroke : strokes)
+  {
+    if (std::find(stroke.m_lines.begin(), stroke.m_lines.end(), "L6") != stroke.m_lines.end())
+      strokedL6 = true;
+    if (std::find(stroke.m_lines.begin(), stroke.m_lines.end(), "S1") != stroke.m_lines.end())
+      strokedS1 = true;
+    TEST_GREATER(stroke.m_shape.size(), 1, ());
+  }
+  TEST(strokedL6, ());
+  TEST(strokedS1, ());
 }
 
 UNIT_TEST(Lookup_GeotrenStopAndRenfeTrip)

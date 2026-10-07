@@ -329,9 +329,24 @@ public class MetroTrainOverlay extends LinearLayout
     if (mSelectedKey != null && !mTrains.containsKey(mSelectedKey) && !mCommuter.containsKey(mSelectedKey))
       mSelectedKey = null;
     MetroLive.setTrains(shown.toArray(new MetroTrain[0]));
-    CommuterLive.setTrains(commuterShown.toArray(new CommuterTrain[0]));
+    CommuterLive.setTrains(commuterShown.toArray(new CommuterTrain[0]), enabledCommuterLines());
     invalidate();
     scheduleCaption();
+  }
+
+  @NonNull
+  private String[] enabledCommuterLines()
+  {
+    if (!CommuterLive.isEnabled())
+      return new String[0];
+    List<String> lines = new ArrayList<>();
+    for (String name : CommuterLineSelection.FGC_NAMES)
+      if (CommuterLineSelection.isShown(getContext(), CommuterLineSelection.FGC, name))
+        lines.add(name);
+    for (String name : CommuterLineSelection.RODALIES_NAMES)
+      if (CommuterLineSelection.isShown(getContext(), CommuterLineSelection.RODALIES, name))
+        lines.add(name);
+    return lines.toArray(new String[0]);
   }
 
   private void showTrain(@Nullable String key)

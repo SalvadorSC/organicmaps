@@ -1107,6 +1107,7 @@ std::vector<RailTrack> SchemeTracks()
       track.m_shape.push_back({row.m_points[i][0], row.m_points[i][1]});
     tracks.push_back(std::move(track));
   }
+  AppendFgcSchemeTracks(tracks);
   return tracks;
 }
 }  // namespace commuter_live

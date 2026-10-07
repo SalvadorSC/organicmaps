@@ -20,7 +20,16 @@ public final class CommuterLive
   /** Replaces the commuter markers drawn in the map pass. Null or empty clears that layer only. */
   public static void setTrains(@Nullable CommuterTrain[] trains)
   {
-    nativeSetTrains(trains);
+    nativeSetTrains(trains, null);
+  }
+
+  /**
+   * Same as {@link #setTrains(CommuterTrain[])}, and strokes every enabled line. An empty line list
+   * clears the corridors. Null lines fall back to the lines of the trains that are on the map.
+   */
+  public static void setTrains(@Nullable CommuterTrain[] trains, @Nullable String[] lines)
+  {
+    nativeSetTrains(trains, lines);
   }
 
   @Nullable
@@ -50,7 +59,7 @@ public final class CommuterLive
 
   private static native void nativeSetEnabled(boolean enabled);
 
-  private static native void nativeSetTrains(@Nullable CommuterTrain[] trains);
+  private static native void nativeSetTrains(@Nullable CommuterTrain[] trains, @Nullable String[] lines);
 
   private static native boolean nativePoll(CommuterSnapshot snapshot);
 

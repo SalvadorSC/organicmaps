@@ -20,9 +20,10 @@ struct StationStop
 
 std::vector<StationStop> StationStops();
 
-// Rodalies shapes from the Renfe Cercanías GTFS. Organic Maps draws these
-// corridors as grey rail, so the overlay can stroke them in the line colour.
+// Rodalies shapes from the Renfe Cercanías GTFS, plus FGC corridors.
+// Organic Maps already paints many of these, and the overlay still strokes them.
 std::vector<RailTrack> SchemeTracks();
+void AppendFgcSchemeTracks(std::vector<RailTrack> & tracks);
 
 StationStop const * FindStation(std::string_view id);
 std::vector<StationStop> StopsWithin(double lat, double lon, double limitM);
