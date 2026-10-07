@@ -18,8 +18,9 @@ namespace commuter_live
 inline std::string_view constexpr kCommuterLiveEnabledSetting = "CommuterLiveEnabled";
 
 // FGC Geotren and Renfe GTFS-RT VehiclePositions. Both are CC BY 4.0.
+// OpenDataSoft rejects limit above 100. The live set is smaller than that.
 inline std::string_view constexpr kGeotrenUrl =
-    "https://fgc.opendatasoft.com/api/explore/v2.1/catalog/datasets/posicionament-dels-trens/records?limit=200";
+    "https://fgc.opendatasoft.com/api/explore/v2.1/catalog/datasets/posicionament-dels-trens/records?limit=100";
 inline std::string_view constexpr kRenfeVehiclesUrl = "https://gtfsrt.renfe.com/vehicle_positions.pb";
 inline std::string_view constexpr kRenfeTripsUrl = "https://gtfsrt.renfe.com/trip_updates.pb";
 

@@ -198,10 +198,12 @@ UNIT_TEST(Poll_BearingFromSecondFixAndDropsDistantRenfe)
 {
   int step = 0;
   auto const clock = [&] { return std::chrono::steady_clock::time_point(std::chrono::seconds(step)); };
+  std::string geotrenUrl;
   auto const http = [&](std::string const & url) -> std::optional<std::string>
   {
     if (url.find("posicionament") != std::string::npos)
     {
+      geotrenUrl = url;
       double const lon = step == 0 ? 2.16 : 2.161;
       return std::string("{\"results\":[{\"id\":\"t1\",\"lin\":\"S1\",\"geo_point_2d\":{\"lon\":") +
              std::to_string(lon) +
@@ -214,6 +216,8 @@ UNIT_TEST(Poll_BearingFromSecondFixAndDropsDistantRenfe)
   };
   commuter_live::CommuterService service(http, clock);
   auto const first = service.Poll();
+  TEST(geotrenUrl.find("limit=100") != std::string::npos, (geotrenUrl));
+  TEST(geotrenUrl.find("limit=200") == std::string::npos, (geotrenUrl));
   TEST(first.m_enabled, ());
   TEST_EQUAL(first.m_trains.size(), 2, ());
   bool sawS1 = false;

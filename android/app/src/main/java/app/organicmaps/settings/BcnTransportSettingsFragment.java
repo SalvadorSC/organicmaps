@@ -76,14 +76,23 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     screen.addPreference(rodalies);
     for (int i = 0; i < CommuterLineSelection.FGC_NAMES.length; ++i)
       fgc.addPreference(
-          lineBox(CommuterLineSelection.FGC_NAMES[i],
-                  CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
-                  CommuterLineSelection.FGC_COLORS[i], density, size, false));
+          commuterLine(CommuterLineSelection.FGC_NAMES[i],
+                       CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
+                       CommuterLineSelection.FGC_COLORS[i], density, size));
     for (int i = 0; i < CommuterLineSelection.RODALIES_NAMES.length; ++i)
-      rodalies.addPreference(
-          lineBox(CommuterLineSelection.RODALIES_NAMES[i],
-                  CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
-                  CommuterLineSelection.RODALIES_COLORS[i], density, size, false));
+      rodalies.addPreference(commuterLine(
+          CommuterLineSelection.RODALIES_NAMES[i],
+          CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
+          CommuterLineSelection.RODALIES_COLORS[i], density, size));
+  }
+
+  @NonNull
+  private CheckBoxPreference commuterLine(@NonNull String title, @NonNull String key, int color, float density,
+                                          int size)
+  {
+    CheckBoxPreference box = lineBox(title, key, color, density, size, false);
+    box.setDependency(getString(R.string.pref_commuter_live));
+    return box;
   }
 
   @NonNull
