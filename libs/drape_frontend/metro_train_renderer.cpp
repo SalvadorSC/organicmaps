@@ -89,9 +89,17 @@ dp::Color ContrastFor(dp::Color const & fill)
   return lum > 0.62f ? dp::Color(20, 20, 20) : dp::Color::White();
 }
 
-uint64_t DiscKey(dp::Color const & color, int radiusPx)
+uint64_t DiscKey(dp::Color const & color, int radiusPx, int outlinePx)
 {
-  return (static_cast<uint64_t>(color.GetRGBA()) << 16) | static_cast<uint64_t>(std::max(radiusPx, 0));
+  return (static_cast<uint64_t>(color.GetRGBA()) << 24) | (static_cast<uint64_t>(std::max(radiusPx, 0)) << 8) |
+         static_cast<uint64_t>(std::max(outlinePx, 0) & 0xFF);
+}
+
+int OutlinePx(bool labelled, float vs)
+{
+  // Metro dots keep a thicker ring. Labelled badges stay tight so the code fits.
+  float const dp = labelled ? 1.15f : 2.6f;
+  return std::max(1, static_cast<int>(std::lround(dp * vs)));
 }
 
 std::string LabelKey(std::string const & label, dp::Color const & text)
@@ -202,6 +210,7 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
   {
     dp::Color m_color;
     int m_radius = 0;
+    int m_outline = 0;
   };
   std::unordered_map<uint64_t, DiscStyle> discs;
   for (auto const & train : m_trains)
@@ -214,12 +223,16 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
         radius = known->second;
       else
       {
-        float const fontPx = 9.5f * vs;
-        float const fontSize = fontPx * static_cast<float>(dp::kBaseFontSizePixels) / fontScale;
+        // StraightTextLayout draws at fontSize * fontScale / kBaseFontSizePixels.
+        // The previous formula multiplied by the base glyph size, so a Pixel-class
+        // screen blew a two-letter code up to hundreds of pixels. 8.5 dp is a
+        // small badge, about the visual weight of a metro dot.
+        float constexpr kLabelDp = 8.5f;
+        float const fontSize = kLabelDp * vs / fontScale;
         StraightTextLayout const layout(train.m_label, fontSize, textures, dp::Center, true,
                                         StringUtf8Multilang::kDefaultCode);
         float const longest = std::max(layout.GetPixelLength(), layout.GetPixelHeight());
-        radius = std::max(m_dotRadius + 4, static_cast<int>(std::lround(0.5f * longest + 3.6f * vs)));
+        radius = std::max(m_dotRadius, static_cast<int>(std::lround(0.5f * longest + 1.5f * vs)));
         m_labelRadius.emplace(train.m_label, radius);
 
         if (layout.GetGlyphCount() > 0)
@@ -264,10 +277,10 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
         }
       }
     }
-    discs.emplace(DiscKey(train.m_color, radius), DiscStyle{train.m_color, radius});
+    int const outline = OutlinePx(!train.m_label.empty(), vs);
+    discs.emplace(DiscKey(train.m_color, radius, outline), DiscStyle{train.m_color, radius, outline});
   }
 
-  float const grow = 2.6f * vs;
   for (auto const & [key, style] : discs)
   {
     dp::TextureManager::ColorRegion fillRegion;
@@ -276,7 +289,8 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
     textures->GetColorRegion(ContrastFor(style.m_color), outlineRegion);
     std::vector<TrainDiscVertex> verts;
     verts.reserve(16 * 6 * 2);
-    AppendDisc(verts, glsl::ToVec2(outlineRegion.GetTexRect().Center()), static_cast<float>(style.m_radius) + grow);
+    AppendDisc(verts, glsl::ToVec2(outlineRegion.GetTexRect().Center()),
+               static_cast<float>(style.m_radius + style.m_outline));
     AppendDisc(verts, glsl::ToVec2(fillRegion.GetTexRect().Center()), static_cast<float>(style.m_radius));
     auto state = CreateRenderState(gpu::Program::MyPosition, DepthLayer::OverlayLayer);
     state.SetDepthTestEnabled(false);
@@ -347,8 +361,10 @@ void MetroTrainRenderer::Render(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp
   auto const & glyph = VisualParams::Instance().GetGlyphVisualParams();
   for (auto const & train : m_trains)
   {
-    int const radius = train.m_label.empty() ? m_dotRadius : m_labelRadius[train.m_label];
-    auto const mesh = m_meshes.find(DiscKey(train.m_color, radius));
+    bool const labelled = !train.m_label.empty();
+    int const radius = labelled ? m_labelRadius[train.m_label] : m_dotRadius;
+    float const vs = static_cast<float>(VisualParams::Instance().GetVisualScale());
+    auto const mesh = m_meshes.find(DiscKey(train.m_color, radius, OutlinePx(labelled, vs)));
     if (mesh == m_meshes.end())
       continue;
     m2::PointD const adjusted = AdjustPointForViewport(train.m_mercator, screen);
