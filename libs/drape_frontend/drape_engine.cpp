@@ -176,6 +176,13 @@ void DrapeEngine::SetMetroTrains(std::vector<MetroTrainMarker> trains)
                                   make_unique_dp<UpdateMetroTrainsMessage>(std::move(trains)), MessagePriority::Normal);
 }
 
+void DrapeEngine::SetCommuterStrokes(std::vector<MetroTrainStroke> strokes)
+{
+  m_threadCommutator->PostMessage(ThreadsCommutator::RenderThread,
+                                  make_unique_dp<UpdateCommuterStrokesMessage>(std::move(strokes)),
+                                  MessagePriority::Normal);
+}
+
 void DrapeEngine::Invalidate()
 {
   m_threadCommutator->PostMessage(ThreadsCommutator::RenderThread, make_unique_dp<InvalidateMessage>(),

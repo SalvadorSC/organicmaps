@@ -116,6 +116,7 @@ std::string_view DebugPrint(Message::Type msgType)
   case Message::Type::SetTileBackgroundMode: return "SetTileBackgroundMode";
   case Message::Type::AssignTileBackgroundImage: return "AssignTileBackgroundImage";
   case Message::Type::UpdateMetroTrains: return "UpdateMetroTrains";
+  case Message::Type::UpdateCommuterStrokes: return "UpdateCommuterStrokes";
   }
   UNREACHABLE();
 }

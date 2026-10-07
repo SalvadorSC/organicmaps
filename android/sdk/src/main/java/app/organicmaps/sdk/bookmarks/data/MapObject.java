@@ -308,6 +308,18 @@ public class MapObject implements PlacePageData
     return mRawTypes.contains("amenity-bicycle_rental");
   }
 
+  public boolean isRailStation()
+  {
+    if (mRawTypes == null)
+      return false;
+    for (String type : mRawTypes)
+    {
+      if (type.startsWith("railway-station") || type.startsWith("railway-halt") || type.startsWith("railway-stop"))
+        return true;
+    }
+    return false;
+  }
+
   public boolean isBusStop()
   {
     if (mRawTypes == null)

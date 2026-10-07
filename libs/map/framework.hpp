@@ -186,6 +186,12 @@ protected:
     m2::PointD m_mercator;
     std::string m_key;
   };
+  // Metro dots and commuter chevrons are published together so one poll cannot
+  // wipe the other layer.
+  std::vector<df::MetroTrainMarker> m_metroMarkers;
+  std::vector<std::string> m_metroKeys;
+  std::vector<df::MetroTrainMarker> m_commuterMarkers;
+  std::vector<std::string> m_commuterKeys;
   std::vector<MetroTrainHit> m_metroTrainHits;
   std::function<void(std::string const &)> m_onMetroTrainTap;
 
@@ -548,11 +554,20 @@ public:
   m2::PointD GtoP(m2::PointD const & p) const;
   m2::PointD P3dtoG(m2::PointD const & p) const;
 
-  // Estimated metro arrows. keys[i] is the tap id for markers[i]. Empty clears the layer.
+  // Estimated metro dots. keys[i] is the tap id for markers[i]. Empty clears that layer.
   void SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys);
+  // Live FGC and Rodalies discs. Kept separate from the metro layer.
+  void SetCommuterTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys);
+  // Coloured strokes for rail the map leaves grey. Empty clears them.
+  void SetCommuterStrokes(std::vector<df::MetroTrainStroke> strokes);
   void SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler);
+
   /// @}
 
+private:
+  void PublishTrainMarkers();
+
+public:
   /// Show all model by it's world rect.
   void ShowAll();
 

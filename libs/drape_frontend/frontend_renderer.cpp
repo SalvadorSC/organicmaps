@@ -1033,6 +1033,13 @@ void FrontendRenderer::AcceptMessage(ref_ptr<Message> message)
     break;
   }
 
+  case Message::Type::UpdateCommuterStrokes:
+  {
+    ref_ptr<UpdateCommuterStrokesMessage> msg = message;
+    m_metroTrains.SetStrokes(std::move(msg->Strokes()));
+    break;
+  }
+
   case Message::Type::NotifyRenderThread:
   {
     ref_ptr<NotifyRenderThreadMessage> msg = message;

@@ -1725,19 +1725,47 @@ m2::PointD Framework::GtoP(m2::PointD const & p) const
   return m_currentModelView.PtoP3d(m_currentModelView.GtoP(p));
 }
 
-void Framework::SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+void Framework::PublishTrainMarkers()
 {
+  std::vector<df::MetroTrainMarker> markers;
+  markers.reserve(m_metroMarkers.size() + m_commuterMarkers.size());
   m_metroTrainHits.clear();
-  size_t const count = std::min(markers.size(), keys.size());
-  m_metroTrainHits.reserve(count);
-  for (size_t i = 0; i < count; ++i)
+  auto const add =
+      [&](std::vector<df::MetroTrainMarker> const & layerMarkers, std::vector<std::string> const & layerKeys)
   {
-    if (keys[i].empty())
-      continue;
-    m_metroTrainHits.push_back({markers[i].m_mercator, keys[i]});
-  }
+    markers.insert(markers.end(), layerMarkers.begin(), layerMarkers.end());
+    size_t const count = std::min(layerMarkers.size(), layerKeys.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+      if (layerKeys[i].empty())
+        continue;
+      m_metroTrainHits.push_back({layerMarkers[i].m_mercator, layerKeys[i]});
+    }
+  };
+  add(m_metroMarkers, m_metroKeys);
+  add(m_commuterMarkers, m_commuterKeys);
   if (m_drapeEngine != nullptr)
     m_drapeEngine->SetMetroTrains(std::move(markers));
+}
+
+void Framework::SetMetroTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+{
+  m_metroMarkers = std::move(markers);
+  m_metroKeys = std::move(keys);
+  PublishTrainMarkers();
+}
+
+void Framework::SetCommuterTrains(std::vector<df::MetroTrainMarker> markers, std::vector<std::string> keys)
+{
+  m_commuterMarkers = std::move(markers);
+  m_commuterKeys = std::move(keys);
+  PublishTrainMarkers();
+}
+
+void Framework::SetCommuterStrokes(std::vector<df::MetroTrainStroke> strokes)
+{
+  if (m_drapeEngine != nullptr)
+    m_drapeEngine->SetCommuterStrokes(std::move(strokes));
 }
 
 void Framework::SetMetroTrainTapHandler(std::function<void(std::string const & key)> handler)
@@ -2340,12 +2368,12 @@ void Framework::OnTapEvent(place_page::BuildInfo const & buildInfo)
     return;
   }
 
-  // Train arrows are drawn in the map pass. Hit-test in screen pixels so a pan
-  // is never stolen by a view that lags the map.
+  // Train markers are drawn in the map pass. Hit-test in screen pixels so a pan
+  // is never stolen by a view that lags the map. The slop covers a 3-letter badge.
   if (m_onMetroTrainTap)
   {
     std::string hitKey;
-    double best = 28.0 * df::VisualParams::Instance().GetVisualScale();
+    double best = 36.0 * df::VisualParams::Instance().GetVisualScale();
     for (auto const & train : m_metroTrainHits)
     {
       m2::PointD const tapPx = m_currentModelView.PtoP3d(m_currentModelView.GtoP(buildInfo.m_mercator));

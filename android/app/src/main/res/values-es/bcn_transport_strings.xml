@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="bcn_transport_title">BCN Transport</string>
-  <string name="bcn_transport_summary">Bicicletas compartidas, llegadas de autobús y metro estimado en el área de Barcelona.</string>
+  <string name="bcn_transport_summary">Bicicletas compartidas, llegadas de autobús, metro estimado y trenes de FGC y Rodalies en directo en el área de Barcelona.</string>
   <string name="bus_arrivals_title">Llegadas de autobús en directo</string>
   <string name="bus_arrivals_summary">Al abrir una parada de autobús en el área de Barcelona, muestra los próximos autobuses. Descarga los datos públicos de la AMB y, si añades una clave de TMB, las llegadas de los autobuses urbanos. Respeta el ajuste de datos móviles. Desactivado por defecto. La clave se queda en este dispositivo.</string>
   <string name="bcn_transport_tmb_app_id">Identificador de la app TMB</string>
@@ -19,4 +19,9 @@
   <string name="metro_train_caption">%1$s · %2$s · %3$s</string>
   <string name="metro_lines_title">Líneas</string>
   <string name="metro_lines_summary">Se muestran en el mapa. Todas las líneas están activadas hasta que desactives una.</string>
+  <string name="commuter_live_title">FGC y Rodalies en directo</string>
+  <string name="commuter_live_summary">Muestra los trenes de FGC y Rodalies en el área de Barcelona, en círculos de color con el código de línea. Al abrir una estación se ven los próximos trenes. Las posiciones vienen de Geotren de FGC y de Renfe (CC BY 4.0). Sin clave de TMB. Respeta el ajuste de datos móviles. Desactivado por defecto.</string>
+  <string name="fgc_lines_title">Líneas de FGC</string>
+  <string name="rodalies_lines_title">Líneas de Rodalies</string>
+  <string name="commuter_lines_summary">Se muestran en el mapa cuando FGC y Rodalies en directo está activado y activas una línea. Todas las líneas empiezan desactivadas. Aparte de las líneas de metro.</string>
 </resources>

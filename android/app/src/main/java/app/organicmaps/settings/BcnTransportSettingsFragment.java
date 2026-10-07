@@ -15,6 +15,7 @@ import androidx.preference.TwoStatePreference;
 import app.organicmaps.R;
 import app.organicmaps.sdk.bike_share.BikeShare;
 import app.organicmaps.sdk.bus_live.BusLive;
+import app.organicmaps.sdk.commuter_live.CommuterLive;
 import app.organicmaps.sdk.metro_live.MetroLive;
 
 public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
@@ -49,21 +50,76 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
     float density = getResources().getDisplayMetrics().density;
     int size = (int) (18 * density);
     for (int i = 0; i < MetroLineSelection.NAMES.length; ++i)
+      lines.addPreference(lineBox(MetroLineSelection.NAMES[i], MetroLineSelection.key(MetroLineSelection.NAMES[i]),
+                                  MetroLineSelection.COLORS[i], density, size, true));
+
+    TwoStatePreference commuter = findPreference(getString(R.string.pref_commuter_live));
+    if (commuter == null)
+      return;
+    final int commuterOrder = commuter.getOrder();
+    for (int i = 0; i < screen.getPreferenceCount(); ++i)
     {
-      String name = MetroLineSelection.NAMES[i];
-      CheckBoxPreference box = new CheckBoxPreference(requireContext());
-      box.setKey(MetroLineSelection.key(name));
-      box.setTitle(name);
-      box.setDefaultValue(true);
-      box.setPersistent(true);
-      GradientDrawable badge = new GradientDrawable();
-      badge.setShape(GradientDrawable.OVAL);
-      badge.setColor(MetroLineSelection.COLORS[i]);
-      badge.setStroke(Math.max(1, (int) density), 0x66000000);
-      badge.setSize(size, size);
-      box.setIcon(badge);
-      lines.addPreference(box);
+      if (screen.getPreference(i).getOrder() > commuterOrder)
+        screen.getPreference(i).setOrder(screen.getPreference(i).getOrder() + 2);
     }
+    PreferenceCategory fgc = new PreferenceCategory(requireContext());
+    fgc.setKey(getString(R.string.pref_fgc_lines));
+    fgc.setTitle(R.string.fgc_lines_title);
+    fgc.setSummary(R.string.commuter_lines_summary);
+    fgc.setOrder(commuterOrder + 1);
+    screen.addPreference(fgc);
+    PreferenceCategory rodalies = new PreferenceCategory(requireContext());
+    rodalies.setKey(getString(R.string.pref_rodalies_lines));
+    rodalies.setTitle(R.string.rodalies_lines_title);
+    rodalies.setSummary(R.string.commuter_lines_summary);
+    rodalies.setOrder(commuterOrder + 2);
+    screen.addPreference(rodalies);
+    for (int i = 0; i < CommuterLineSelection.FGC_NAMES.length; ++i)
+      fgc.addPreference(
+          lineBox(CommuterLineSelection.FGC_NAMES[i],
+                  CommuterLineSelection.key(CommuterLineSelection.FGC, CommuterLineSelection.FGC_NAMES[i]),
+                  CommuterLineSelection.FGC_COLORS[i], density, size, false));
+    for (int i = 0; i < CommuterLineSelection.RODALIES_NAMES.length; ++i)
+      rodalies.addPreference(
+          lineBox(CommuterLineSelection.RODALIES_NAMES[i],
+                  CommuterLineSelection.key(CommuterLineSelection.RODALIES, CommuterLineSelection.RODALIES_NAMES[i]),
+                  CommuterLineSelection.RODALIES_COLORS[i], density, size, false));
+    // The master switch lives on this screen, but setDependency() looks it up
+    // before the new checkbox is attached and crashes. Toggle the lists here.
+    setCommuterLinesEnabled(CommuterLive.isEnabled());
+  }
+
+  private void setCommuterLinesEnabled(boolean enabled)
+  {
+    setGroupEnabled(findPreference(getString(R.string.pref_fgc_lines)), enabled);
+    setGroupEnabled(findPreference(getString(R.string.pref_rodalies_lines)), enabled);
+  }
+
+  private static void setGroupEnabled(@Nullable PreferenceCategory group, boolean enabled)
+  {
+    if (group == null)
+      return;
+    group.setEnabled(enabled);
+    for (int i = 0; i < group.getPreferenceCount(); ++i)
+      group.getPreference(i).setEnabled(enabled);
+  }
+
+  @NonNull
+  private CheckBoxPreference lineBox(@NonNull String title, @NonNull String key, int color, float density, int size,
+                                     boolean defaultOn)
+  {
+    CheckBoxPreference box = new CheckBoxPreference(requireContext());
+    box.setKey(key);
+    box.setTitle(title);
+    box.setDefaultValue(defaultOn);
+    box.setPersistent(true);
+    GradientDrawable badge = new GradientDrawable();
+    badge.setShape(GradientDrawable.OVAL);
+    badge.setColor(color);
+    badge.setStroke(Math.max(1, (int) density), 0x66000000);
+    badge.setSize(size, size);
+    box.setIcon(badge);
+    return box;
   }
 
   @Override
@@ -91,6 +147,16 @@ public class BcnTransportSettingsFragment extends BaseXmlSettingsFragment
       MetroLive.setEnabled((Boolean) newValue);
       return true;
     });
+
+    final TwoStatePreference commuterLive = getPreference(getString(R.string.pref_commuter_live));
+    commuterLive.setChecked(CommuterLive.isEnabled());
+    commuterLive.setOnPreferenceChangeListener((preference, newValue) -> {
+      final boolean enabled = (Boolean) newValue;
+      CommuterLive.setEnabled(enabled);
+      setCommuterLinesEnabled(enabled);
+      return true;
+    });
+    setCommuterLinesEnabled(commuterLive.isChecked());
 
     final EditTextPreference appId = getPreference(getString(R.string.pref_tmb_app_id));
     appId.setText(BusLive.getTmbAppId());

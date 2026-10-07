@@ -23,6 +23,13 @@
     app:singleLineTitle="false"
     android:persistent="false"
     android:defaultValue="false" />
+  <SwitchPreferenceCompat
+    android:key="@string/pref_commuter_live"
+    android:title="@string/commuter_live_title"
+    android:summary="@string/commuter_live_summary"
+    app:singleLineTitle="false"
+    android:persistent="false"
+    android:defaultValue="false" />
   <EditTextPreference
     android:key="@string/pref_tmb_app_id"
     android:title="@string/bcn_transport_tmb_app_id"

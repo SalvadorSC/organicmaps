@@ -1639,4 +1639,16 @@ public:
 private:
   std::vector<MetroTrainMarker> m_trains;
 };
+
+class UpdateCommuterStrokesMessage : public Message
+{
+public:
+  explicit UpdateCommuterStrokesMessage(std::vector<MetroTrainStroke> strokes) : m_strokes(std::move(strokes)) {}
+
+  Type GetType() const override { return Type::UpdateCommuterStrokes; }
+  std::vector<MetroTrainStroke> & Strokes() { return m_strokes; }
+
+private:
+  std::vector<MetroTrainStroke> m_strokes;
+};
 }  // namespace df
