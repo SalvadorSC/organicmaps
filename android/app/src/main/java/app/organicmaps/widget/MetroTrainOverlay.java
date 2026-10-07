@@ -7,7 +7,6 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.Choreographer;
 import android.view.Gravity;
@@ -375,22 +374,24 @@ public class MetroTrainOverlay extends LinearLayout
     double[] px = Framework.nativeLatLonToScreen(lat, lon);
     if (px == null || px.length < 2)
       return;
+    String line = train != null ? train.mLine : commuter.mLine;
+    String destination = train != null ? train.mDestination : commuter.mDestination;
+    String next = train != null ? train.mNextStop : commuter.mNextStop;
+    if (line == null)
+      line = "";
+    if (destination == null)
+      destination = "";
+    if (next == null)
+      next = "";
     String text;
-    if (train != null)
-    {
-      String destination = train.mDestination == null ? "" : train.mDestination;
-      String next = train.mNextStop == null ? "" : train.mNextStop;
-      text = getContext().getString(R.string.metro_train_caption, train.mLine, destination, next);
-    }
+    if (!destination.isEmpty() && !next.isEmpty())
+      text = getContext().getString(R.string.metro_train_caption, line, destination, next);
+    else if (!destination.isEmpty())
+      text = line + " · " + destination;
+    else if (!next.isEmpty())
+      text = line + " · " + next;
     else
-    {
-      String destination = commuter.mDestination == null ? "" : commuter.mDestination;
-      String next = commuter.mNextStop == null ? "" : commuter.mNextStop;
-      if (TextUtils.isEmpty(destination) && TextUtils.isEmpty(next))
-        text = commuter.mLine;
-      else
-        text = getContext().getString(R.string.metro_train_caption, commuter.mLine, destination, next);
-    }
+      text = line;
     float pad = 8f * getResources().getDisplayMetrics().density;
     float width = mLabel.measureText(text);
     float left = Math.max(pad, Math.min((float) px[0] + pad, getWidth() - width - pad * 3));

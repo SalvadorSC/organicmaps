@@ -17,6 +17,7 @@
 
 #include "drape/color.hpp"
 
+#include "geometry/distance_on_sphere.hpp"
 #include "geometry/mercator.hpp"
 
 #include "coding/reader.hpp"
@@ -376,25 +377,70 @@ std::vector<commuter_live::RailTrack> LoadCommuterTracks()
     LOG(LWARNING, ("Commuter rail scan failed", exception.Msg()));
   }
 
-  std::vector<std::string> coloredRefs;
-  for (auto const & track : fromMap)
-    if (track.m_colored && !track.m_ref.empty())
-      coloredRefs.push_back(commuter_live::CanonicalLine(track.m_ref));
+  // Keep scheme shapes even when the transit graph already paints the line.
+  // SharedStrokes prefers the uncoloured scheme and falls back to a coloured
+  // subway shape, which is how FGC routes get a stroke.
   std::vector<commuter_live::RailTrack> tracks;
   tracks.reserve(scheme.size() + fromMap.size());
-  for (auto & track : scheme)
-  {
-    std::string const ref = commuter_live::CanonicalLine(track.m_ref);
-    if (std::find(coloredRefs.begin(), coloredRefs.end(), ref) != coloredRefs.end())
-      continue;
-    tracks.push_back(std::move(track));
-  }
+  tracks.insert(tracks.end(), std::make_move_iterator(scheme.begin()), std::make_move_iterator(scheme.end()));
   tracks.insert(tracks.end(), std::make_move_iterator(fromMap.begin()), std::make_move_iterator(fromMap.end()));
   LOG(LINFO, ("Commuter rail tracks", tracks.size()));
   std::lock_guard<std::mutex> const lock(mutex);
   cachedKey = std::move(key);
   cached = tracks;
   return cached;
+}
+
+ms::LatLon LerpLatLon(ms::LatLon const & a, ms::LatLon const & b, double t)
+{
+  return {a.m_lat + (b.m_lat - a.m_lat) * t, a.m_lon + (b.m_lon - a.m_lon) * t};
+}
+
+ms::LatLon PointAt(std::vector<ms::LatLon> const & shape, std::vector<double> const & cum, double dist)
+{
+  if (dist <= 0)
+    return shape.front();
+  if (dist >= cum.back())
+    return shape.back();
+  auto const it = std::lower_bound(cum.begin(), cum.end(), dist);
+  size_t const index = static_cast<size_t>(it - cum.begin());
+  if (index == 0)
+    return shape.front();
+  double const span = cum[index] - cum[index - 1];
+  double const t = span < 1e-3 ? 0 : (dist - cum[index - 1]) / span;
+  return LerpLatLon(shape[index - 1], shape[index], t);
+}
+
+// Equal bands along the stroke: 50/50, thirds, and so on. Long corridors repeat
+// the cycle so every line stays visible instead of owning one half of the city.
+void AppendStriped(std::vector<df::MetroTrainStroke> & strokes, std::vector<ms::LatLon> const & shape,
+                   std::vector<dp::Color> const & colors)
+{
+  if (shape.size() < 2 || colors.empty())
+    return;
+  std::vector<double> cum(shape.size(), 0);
+  for (size_t i = 1; i < shape.size(); ++i)
+    cum[i] = cum[i - 1] + ms::DistanceOnEarth(shape[i - 1], shape[i]);
+  double const total = cum.back();
+  if (total < 1)
+    return;
+  double constexpr kStripeM = 400.0;
+  double const stripe =
+      total < kStripeM * static_cast<double>(colors.size()) ? total / static_cast<double>(colors.size()) : kStripeM;
+  size_t colorIndex = 0;
+  for (double start = 0; start < total - 0.5; start += stripe, ++colorIndex)
+  {
+    double const end = std::min(total, start + stripe);
+    df::MetroTrainStroke stroke;
+    stroke.m_color = colors[colorIndex % colors.size()];
+    stroke.m_mercator.push_back(mercator::FromLatLon(PointAt(shape, cum, start)));
+    for (size_t i = 1; i + 1 < shape.size(); ++i)
+      if (cum[i] > start && cum[i] < end)
+        stroke.m_mercator.push_back(mercator::FromLatLon(shape[i]));
+    stroke.m_mercator.push_back(mercator::FromLatLon(PointAt(shape, cum, end)));
+    if (stroke.m_mercator.size() >= 2)
+      strokes.push_back(std::move(stroke));
+  }
 }
 
 std::vector<df::MetroTrainStroke> StrokesFor(std::vector<std::string> const & lines)
@@ -405,14 +451,13 @@ std::vector<df::MetroTrainStroke> StrokesFor(std::vector<std::string> const & li
     tracks = g_tracks;
   }
   std::vector<df::MetroTrainStroke> strokes;
-  for (auto const & track : commuter_live::StrokeTracks(tracks, lines))
+  for (auto const & corridor : commuter_live::SharedStrokes(tracks, lines))
   {
-    df::MetroTrainStroke stroke;
-    stroke.m_color = ParseCommuterColor(commuter_live::LineColor(track.m_ref));
-    stroke.m_mercator.reserve(track.m_shape.size());
-    for (auto const & point : track.m_shape)
-      stroke.m_mercator.push_back(mercator::FromLatLon(point));
-    strokes.push_back(std::move(stroke));
+    std::vector<dp::Color> colors;
+    colors.reserve(corridor.m_lines.size());
+    for (auto const & line : corridor.m_lines)
+      colors.push_back(ParseCommuterColor(commuter_live::LineColor(line)));
+    AppendStriped(strokes, corridor.m_shape, colors);
   }
   return strokes;
 }

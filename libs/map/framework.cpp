@@ -2368,12 +2368,12 @@ void Framework::OnTapEvent(place_page::BuildInfo const & buildInfo)
     return;
   }
 
-  // Train arrows are drawn in the map pass. Hit-test in screen pixels so a pan
-  // is never stolen by a view that lags the map.
+  // Train markers are drawn in the map pass. Hit-test in screen pixels so a pan
+  // is never stolen by a view that lags the map. The slop covers a 3-letter badge.
   if (m_onMetroTrainTap)
   {
     std::string hitKey;
-    double best = 28.0 * df::VisualParams::Instance().GetVisualScale();
+    double best = 36.0 * df::VisualParams::Instance().GetVisualScale();
     for (auto const & train : m_metroTrainHits)
     {
       m2::PointD const tapPx = m_currentModelView.PtoP3d(m_currentModelView.GtoP(buildInfo.m_mercator));

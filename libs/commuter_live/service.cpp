@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <unordered_map>
 #include <utility>
 
 namespace commuter_live
@@ -192,6 +193,40 @@ std::string StopTitle(std::string_view id)
   return StationName(id);
 }
 
+// Renfe vehicle positions have no destination. The matching TripUpdate does.
+void ApplyTripDestinations(std::vector<Train> & trains, std::vector<TripPass> const & trips)
+{
+  std::unordered_map<std::string, TripPass const *> byTrip;
+  byTrip.reserve(trips.size());
+  for (auto const & trip : trips)
+    if (!trip.m_tripId.empty())
+      byTrip.emplace(trip.m_tripId, &trip);
+  int64_t const nowUnix =
+      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  for (auto & train : trains)
+  {
+    if (train.m_tripId.empty())
+      continue;
+    auto const it = byTrip.find(train.m_tripId);
+    if (it == byTrip.end() || it->second->m_stops.empty())
+      continue;
+    auto const & stops = it->second->m_stops;
+    if (train.m_destination.empty())
+      train.m_destination = StopTitle(stops.back().m_stopId);
+    if (train.m_nextStop.empty())
+    {
+      for (auto const & stop : stops)
+      {
+        if (stop.m_etaUnixSec >= nowUnix - 30)
+        {
+          train.m_nextStop = StopTitle(stop.m_stopId);
+          break;
+        }
+      }
+    }
+  }
+}
+
 std::vector<Train> CommuterService::Build(std::vector<RawTrain> const & rows, std::string_view source,
                                           std::unordered_map<std::string, Fix> & nextFixes) const
 {
@@ -217,6 +252,7 @@ std::vector<Train> CommuterService::Build(std::vector<RawTrain> const & rows, st
     train.m_destination = StationName(row.m_destination);
     train.m_nextStop = StationName(row.m_nextStop);
     train.m_key = id;
+    train.m_tripId = row.m_tripId;
     train.m_upcoming = row.m_upcoming;
     train.m_parkedAt = row.m_parkedAt;
     Fix fix;
@@ -282,6 +318,7 @@ void CommuterService::RefreshUnlocked()
   }
   else if (m_hasRenfe)
     m_lastRenfe = Remembered(m_lastRenfe, nextFixes, m_fixes);
+  ApplyTripDestinations(m_lastRenfe, m_trips);
 
   trains.reserve(m_lastFgc.size() + m_lastRenfe.size());
   trains.insert(trains.end(), m_lastFgc.begin(), m_lastFgc.end());

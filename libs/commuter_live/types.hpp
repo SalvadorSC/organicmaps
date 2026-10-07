@@ -24,6 +24,7 @@ struct RawTrain
   // position in this list. Empty for Renfe vehicle positions.
   std::vector<std::string> m_upcoming;
   std::string m_parkedAt;
+  std::string m_tripId;
 };
 
 struct Train
@@ -38,6 +39,7 @@ struct Train
   std::string m_destination;
   std::string m_nextStop;
   std::string m_key;
+  std::string m_tripId;
   std::vector<std::string> m_upcoming;
   std::string m_parkedAt;
 };

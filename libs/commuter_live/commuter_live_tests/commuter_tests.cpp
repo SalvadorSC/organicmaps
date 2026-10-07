@@ -8,6 +8,7 @@
 
 #include "geometry/distance_on_sphere.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -81,7 +82,7 @@ std::string TripFeed(uint64_t etaUnixSec)
 }
 
 std::string Vehicle(std::string_view entityId, std::string_view label, float lat, float lon,
-                    std::optional<float> bearing)
+                    std::optional<float> bearing, std::string_view tripId = {})
 {
   std::string position;
   AppendFloat(position, 1, lat);
@@ -91,6 +92,12 @@ std::string Vehicle(std::string_view entityId, std::string_view label, float lat
   std::string descriptor;
   AppendString(descriptor, 2, label);
   std::string vehicle;
+  if (!tripId.empty())
+  {
+    std::string trip;
+    AppendString(trip, 1, tripId);
+    AppendMessage(vehicle, 1, trip);
+  }
   AppendMessage(vehicle, 2, position);
   AppendMessage(vehicle, 8, descriptor);
   std::string entity;
@@ -258,6 +265,29 @@ UNIT_TEST(Poll_BearingFromSecondFixAndDropsDistantRenfe)
   TEST_EQUAL(cached.m_trains.size(), 2, ());
 }
 
+UNIT_TEST(Poll_RenfeTripFillsDestination)
+{
+  auto const http = [](std::string const & url) -> std::optional<std::string>
+  {
+    if (url.find("posicionament") != std::string::npos)
+      return std::string("{\"results\":[]}");
+    if (url.find("trip_updates") != std::string::npos)
+      return TripFeed(2000000000);
+    if (url.find("vehicle_positions") != std::string::npos)
+      return Vehicle("VP_R4-1", "R4-1", 41.39f, 2.16f, std::nullopt, "5177M77552R4");
+    return std::string();
+  };
+  commuter_live::CommuterService service(http, [] { return std::chrono::steady_clock::time_point{}; });
+  auto const polled = service.Poll();
+  TEST_EQUAL(polled.m_trains.size(), 1, ());
+  if (!polled.m_trains.empty())
+  {
+    TEST_EQUAL(polled.m_trains[0].m_line, std::string("R4"), ());
+    TEST_EQUAL(polled.m_trains[0].m_destination, std::string("Sant Vicenç de Calders"), ());
+    TEST_EQUAL(polled.m_trains[0].m_nextStop, std::string("Sant Vicenç de Calders"), ());
+  }
+}
+
 UNIT_TEST(Snap_ProjectsOntoLine)
 {
   commuter_live::RailTrack line;
@@ -292,9 +322,46 @@ UNIT_TEST(Snap_ProjectsOntoLine)
   colored.m_shape = {{41.0, 2.0}, {41.1, 2.0}};
   commuter_live::RailTrack grey = line;
   grey.m_colored = false;
-  auto const strokes = commuter_live::StrokeTracks({colored, grey}, {"L6", "R4"});
-  TEST_EQUAL(strokes.size(), 1, ());
-  TEST_EQUAL(strokes[0].m_ref, std::string("R4"), ());
+  auto const strokes = commuter_live::SharedStrokes({colored, grey}, {"L6", "R4"});
+  TEST_EQUAL(strokes.size(), 2, ());
+  bool sawL6 = false;
+  bool sawR4 = false;
+  for (auto const & stroke : strokes)
+  {
+    TEST_EQUAL(stroke.m_lines.size(), 1, ());
+    if (stroke.m_lines[0] == "L6")
+      sawL6 = true;
+    if (stroke.m_lines[0] == "R4")
+      sawR4 = true;
+  }
+  TEST(sawL6, ());
+  TEST(sawR4, ());
+}
+
+UNIT_TEST(SharedStrokes_OneRibbonForSharedCorridor)
+{
+  commuter_live::RailTrack s1;
+  s1.m_ref = "S1";
+  s1.m_colored = true;
+  s1.m_shape = {{41.38, 2.14}, {41.40, 2.15}, {41.42, 2.16}};
+  commuter_live::RailTrack s2 = s1;
+  s2.m_ref = "S2";
+  s2.m_shape.push_back({41.45, 2.20});
+  auto const strokes = commuter_live::SharedStrokes({s1, s2}, {"S2", "S1"});
+  bool shared = false;
+  bool tail = false;
+  for (auto const & stroke : strokes)
+  {
+    if (stroke.m_lines.size() == 2)
+      shared = true;
+    if (stroke.m_lines.size() == 1 && stroke.m_lines[0] == "S2")
+      tail = true;
+    bool const hasS1 = std::find(stroke.m_lines.begin(), stroke.m_lines.end(), "S1") != stroke.m_lines.end();
+    if (hasS1)
+      TEST(std::find(stroke.m_lines.begin(), stroke.m_lines.end(), "S2") != stroke.m_lines.end(), ());
+  }
+  TEST(shared, ());
+  TEST(tail, ());
 }
 
 UNIT_TEST(Lookup_GeotrenStopAndRenfeTrip)

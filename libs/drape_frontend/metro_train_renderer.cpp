@@ -5,7 +5,6 @@
 #include "drape_frontend/render_state_extension.hpp"
 #include "drape_frontend/screen_operations.hpp"
 #include "drape_frontend/shape_view_params.hpp"
-#include "drape_frontend/text_layout.hpp"
 #include "drape_frontend/tile_utils.hpp"
 #include "drape_frontend/visual_params.hpp"
 
@@ -14,16 +13,14 @@
 #include "drape/batcher.hpp"
 #include "drape/constants.hpp"
 #include "drape/drape_global.hpp"
-#include "drape/font_constants.hpp"
 #include "drape/glsl_func.hpp"
 #include "drape/glsl_types.hpp"
 #include "drape/utils/vertex_decl.hpp"
 
 #include "geometry/mercator.hpp"
 
-#include "coding/string_utf8_multilang.hpp"
-
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -107,6 +104,109 @@ std::string LabelKey(std::string const & label, dp::Color const & text)
   return label + ":" + std::to_string(text.GetRGBA());
 }
 
+// 5×7 block letters. The map SDF path was dropping the letter of codes such as
+// S1 and R4 on a small badge and leaving only the digit. These stamps are drawn
+// with the same pixel shader as the disc, so every lit cell of the letter and
+// the digit stays inside the circle.
+uint8_t const * Glyph5x7(char ch)
+{
+  // Bit 4 is the leftmost pixel. Row 0 is the top.
+  static uint8_t constexpr kDigit[10][7] = {
+      {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}, {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
+      {0x0E, 0x11, 0x01, 0x06, 0x08, 0x10, 0x1F}, {0x1F, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1F},
+      {0x11, 0x11, 0x11, 0x1F, 0x01, 0x01, 0x01}, {0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E},
+      {0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E}, {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
+      {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E},
+  };
+  static uint8_t constexpr kLetter[26][7] = {
+      {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E},
+      {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E},
+      {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10},
+      {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E}, {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
+      {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0C},
+      {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F},
+      {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11, 0x11}, {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11},
+      {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10},
+      {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D}, {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11},
+      {0x0E, 0x11, 0x10, 0x0E, 0x01, 0x11, 0x0E}, {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},
+      {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04},
+      {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}, {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11},
+      {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F},
+  };
+  if (ch >= '0' && ch <= '9')
+    return kDigit[ch - '0'];
+  if (ch >= 'A' && ch <= 'Z')
+    return kLetter[ch - 'A'];
+  return nullptr;
+}
+
+struct BadgeLayout
+{
+  int m_radius = 0;
+  std::vector<TrainDiscVertex> m_cells;
+};
+
+void AppendCell(std::vector<TrainDiscVertex> & verts, glsl::vec2 const & tex, float x0, float y0, float x1, float y1)
+{
+  glsl::vec2 const a(x0, y0);
+  glsl::vec2 const b(x1, y0);
+  glsl::vec2 const c(x1, y1);
+  glsl::vec2 const d(x0, y1);
+  verts.emplace_back(a, tex);
+  verts.emplace_back(b, tex);
+  verts.emplace_back(c, tex);
+  verts.emplace_back(a, tex);
+  verts.emplace_back(c, tex);
+  verts.emplace_back(d, tex);
+  verts.emplace_back(a, tex);
+  verts.emplace_back(c, tex);
+  verts.emplace_back(b, tex);
+  verts.emplace_back(a, tex);
+  verts.emplace_back(d, tex);
+  verts.emplace_back(c, tex);
+}
+
+BadgeLayout LayoutBadge(std::string const & label, float vs, glsl::vec2 const & tex)
+{
+  std::string text;
+  text.reserve(label.size());
+  for (unsigned char const ch : label)
+  {
+    char const upper = static_cast<char>(std::toupper(ch));
+    if (Glyph5x7(upper) != nullptr)
+      text.push_back(upper);
+  }
+  BadgeLayout badge;
+  if (text.empty())
+    return badge;
+  float const cell = std::max(1.8f, 1.28f * vs);
+  float const gap = cell * 0.85f;
+  float const width = static_cast<float>(text.size()) * 5.f * cell + static_cast<float>(text.size() - 1) * gap;
+  float const height = 7.f * cell;
+  badge.m_radius = std::max(1, static_cast<int>(std::lround(0.5f * std::max(width, height) + 1.8f * vs)));
+  // Smaller y is the visual top, matching the map text shader.
+  float const top = -0.5f * height;
+  float x = -0.5f * width;
+  float const bleed = 0.35f;
+  for (char const ch : text)
+  {
+    uint8_t const * rows = Glyph5x7(ch);
+    for (int row = 0; row < 7; ++row)
+    {
+      for (int col = 0; col < 5; ++col)
+      {
+        if ((rows[row] & (1 << (4 - col))) == 0)
+          continue;
+        float const x0 = x + static_cast<float>(col) * cell;
+        float const y0 = top + static_cast<float>(row) * cell;
+        AppendCell(badge.m_cells, tex, x0 - bleed, y0 - bleed, x0 + cell + bleed, y0 + cell + bleed);
+      }
+    }
+    x += 5.f * cell + gap;
+  }
+  return badge;
+}
+
 drape_ptr<dp::VertexArrayBuffer> UploadTriangles(ref_ptr<dp::GraphicsContext> context, dp::RenderState const & state,
                                                  std::vector<TrainDiscVertex> & verts)
 {
@@ -162,13 +262,6 @@ void AppendRibbon(std::vector<gpu::AreaVertex> & verts, glsl::vec2 const & tex, 
   }
 }
 
-math::Matrix<float, 4, 4> LabelView(ScreenBase const & screen, TileKey const & key, m2::PointF const & local)
-{
-  auto model = key.GetTileBasedModelView(screen);
-  model(0, 3) += local.x * model(0, 0) + local.y * model(0, 1);
-  model(1, 3) += local.x * model(1, 0) + local.y * model(1, 1);
-  return model;
-}
 }  // namespace
 
 void MetroTrainRenderer::SetTrains(std::vector<MetroTrainMarker> trains)
@@ -198,7 +291,6 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
   m_labels.clear();
   m_labelRadius.clear();
   float const vs = static_cast<float>(VisualParams::Instance().GetVisualScale());
-  float const fontScale = static_cast<float>(std::max(0.5, VisualParams::Instance().GetFontScale()));
   m_dotRadius = std::max(1, static_cast<int>(std::lround(7.5f * vs)));
   if (m_trains.empty())
   {
@@ -223,57 +315,22 @@ void MetroTrainRenderer::Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<d
         radius = known->second;
       else
       {
-        // StraightTextLayout draws at fontSize * fontScale / kBaseFontSizePixels.
-        // The previous formula multiplied by the base glyph size, so a Pixel-class
-        // screen blew a two-letter code up to hundreds of pixels. 8.5 dp is a
-        // small badge, about the visual weight of a metro dot.
-        float constexpr kLabelDp = 8.5f;
-        float const fontSize = kLabelDp * vs / fontScale;
-        StraightTextLayout const layout(train.m_label, fontSize, textures, dp::Center, true,
-                                        StringUtf8Multilang::kDefaultCode);
-        float const longest = std::max(layout.GetPixelLength(), layout.GetPixelHeight());
-        radius = std::max(m_dotRadius, static_cast<int>(std::lround(0.5f * longest + 1.5f * vs)));
+        dp::Color const textColor = ContrastFor(train.m_color);
+        dp::TextureManager::ColorRegion textRegion;
+        textures->GetColorRegion(textColor, textRegion);
+        BadgeLayout const badge = LayoutBadge(train.m_label, vs, glsl::ToVec2(textRegion.GetTexRect().Center()));
+        radius = std::max(m_dotRadius, badge.m_radius);
         m_labelRadius.emplace(train.m_label, radius);
-
-        if (layout.GetGlyphCount() > 0)
+        std::string const key = LabelKey(train.m_label, textColor);
+        if (!badge.m_cells.empty() && m_labels.find(key) == m_labels.end() && textRegion.GetTexture() != nullptr)
         {
-          dp::Color const textColor = ContrastFor(train.m_color);
-          std::string const key = LabelKey(train.m_label, textColor);
-          if (m_labels.find(key) == m_labels.end())
-          {
-            dp::TextureManager::ColorRegion color;
-            textures->GetColorRegion(textColor, color);
-            StraightTextLayout mutableLayout = layout;
-            mutableLayout.SetBasePosition(glm::vec4(0.f, 0.f, dp::depth::kMyPositionMarkDepth, 0.f), glm::vec2(0.f));
-            gpu::TTextStaticVertexBuffer staticBuffer;
-            gpu::TTextDynamicVertexBuffer dynamicBuffer;
-            mutableLayout.CacheStaticGeometry(color, staticBuffer);
-            mutableLayout.CacheDynamicGeometry(glsl::vec2(0.f), dynamicBuffer);
-            if (!staticBuffer.empty() && staticBuffer.size() == dynamicBuffer.size() && color.GetTexture() != nullptr &&
-                mutableLayout.GetMaskTexture() != nullptr)
-            {
-              auto state = CreateRenderState(gpu::Program::Text, DepthLayer::OverlayLayer);
-              state.SetProgram3d(gpu::Program::TextBillboard);
-              state.SetDepthTestEnabled(false);
-              state.SetColorTexture(color.GetTexture());
-              state.SetMaskTexture(mutableLayout.GetMaskTexture());
-              drape_ptr<dp::VertexArrayBuffer> buffer;
-              {
-                uint32_t const count = static_cast<uint32_t>(staticBuffer.size());
-                dp::Batcher batcher(count, count);
-                batcher.SetBatcherHash(static_cast<uint64_t>(BatcherBucket::Default));
-                dp::SessionGuard guard(context, batcher,
-                                       [&buffer](dp::RenderState const &, drape_ptr<dp::RenderBucket> && bucket)
-                { buffer = bucket->MoveBuffer(); });
-                dp::AttributeProvider provider(2, count);
-                provider.InitStream(0, gpu::TextStaticVertex::GetBindingInfo(), make_ref(staticBuffer.data()));
-                provider.InitStream(1, gpu::TextDynamicVertex::GetBindingInfo(), make_ref(dynamicBuffer.data()));
-                batcher.InsertListOfStrip(context, state, make_ref(&provider), 4);
-              }
-              if (buffer != nullptr)
-                m_labels.emplace(key, LabelMesh{state, std::move(buffer), false});
-            }
-          }
+          auto cells = badge.m_cells;
+          auto state = CreateRenderState(gpu::Program::MyPosition, DepthLayer::OverlayLayer);
+          state.SetDepthTestEnabled(false);
+          state.SetColorTexture(textRegion.GetTexture());
+          auto buffer = UploadTriangles(context, state, cells);
+          if (buffer != nullptr)
+            m_labels.emplace(key, RenderNode(state, std::move(buffer)));
         }
       }
     }
@@ -358,7 +415,6 @@ void MetroTrainRenderer::Render(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp
   if (m_dirty || m_meshes.empty())
     Rebuild(context, textures);
 
-  auto const & glyph = VisualParams::Instance().GetGlyphVisualParams();
   for (auto const & train : m_trains)
   {
     bool const labelled = !train.m_label.empty();
@@ -383,28 +439,9 @@ void MetroTrainRenderer::Render(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp
     if (train.m_label.empty())
       continue;
     auto const label = m_labels.find(LabelKey(train.m_label, ContrastFor(train.m_color)));
-    if (label == m_labels.end() || label->second.m_buffer == nullptr)
+    if (label == m_labels.end())
       continue;
-    auto const programId = screen.isPerspective() ? label->second.m_state.GetProgram3d<gpu::Program>()
-                                                  : label->second.m_state.GetProgram<gpu::Program>();
-    auto program = mng->GetProgram(programId);
-    if (program == nullptr)
-      continue;
-    program->Bind();
-    if (!label->second.m_built)
-    {
-      label->second.m_buffer->Build(context, program);
-      label->second.m_built = true;
-    }
-    dp::ApplyState(context, program, label->second.m_state);
-    gpu::MapProgramParams textParams;
-    frameValues.SetTo(textParams);
-    textParams.m_modelView = glsl::make_mat4(LabelView(screen, key, local).m_data);
-    textParams.m_contrastGamma = glsl::vec2(glyph.m_contrast, glyph.m_gamma);
-    textParams.m_isOutlinePass = 0.f;
-    textParams.m_opacity = 1.0f;
-    mng->GetParamsSetter()->Apply(context, program, textParams);
-    label->second.m_buffer->Render(context, false);
+    label->second.Render(context, mng, discParams);
   }
 }
 }  // namespace df

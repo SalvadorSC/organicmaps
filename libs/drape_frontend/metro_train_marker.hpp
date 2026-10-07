@@ -20,7 +20,8 @@ struct MetroTrainMarker
   std::string m_label;
 };
 
-// A line-coloured scheme stroke for rail Organic Maps does not already colour.
+// One coloured piece of an FGC or Rodalies corridor. Shared corridors are split
+// into equal bands before they reach the renderer.
 struct MetroTrainStroke
 {
   dp::Color m_color;

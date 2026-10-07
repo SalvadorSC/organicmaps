@@ -472,6 +472,7 @@ std::optional<std::vector<RawTrain>> ParseVehiclePositions(std::string_view byte
     train.m_id = !entityId.empty() ? entityId : vehicleId;
     if (auto const line = FirstLine(label, vehicleId, entityId, tripId))
       train.m_line = *line;
+    train.m_tripId = std::move(tripId);
     trains.push_back(std::move(train));
   }
   return trains;
@@ -520,6 +521,7 @@ std::optional<std::vector<TripPass>> ParseTripUpdates(std::string_view bytes)
             return false;
           if (auto const line = FirstLine(tripId, routeId, {}, {}))
             trip.m_line = *line;
+          trip.m_tripId = tripId;
           return true;
         }
         if (updateField == 2 && updateWire == 2)

@@ -29,6 +29,7 @@ struct StopVisit
 // A Rodalies trip that is not cancelled. Stops without an absolute time are omitted.
 struct TripPass
 {
+  std::string m_tripId;
   std::string m_line;
   std::vector<StopVisit> m_stops;
 };

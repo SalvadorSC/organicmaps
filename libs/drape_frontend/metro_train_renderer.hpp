@@ -36,13 +36,6 @@ private:
   void Rebuild(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp::TextureManager> textures);
   void RebuildStrokes(ref_ptr<dp::GraphicsContext> context, ref_ptr<dp::TextureManager> textures);
 
-  struct LabelMesh
-  {
-    dp::RenderState m_state;
-    drape_ptr<dp::VertexArrayBuffer> m_buffer;
-    bool m_built = false;
-  };
-
   struct StrokeMesh
   {
     StrokeMesh(dp::RenderState const & state, drape_ptr<dp::VertexArrayBuffer> buffer, m2::PointD const & pivot)
@@ -57,7 +50,7 @@ private:
   std::vector<MetroTrainMarker> m_trains;
   std::unordered_map<uint64_t, RenderNode> m_meshes;
   std::unordered_map<std::string, int> m_labelRadius;
-  std::unordered_map<std::string, LabelMesh> m_labels;
+  std::unordered_map<std::string, RenderNode> m_labels;
   int m_dotRadius = 0;
   std::vector<MetroTrainStroke> m_strokes;
   std::vector<StrokeMesh> m_strokeMeshes;
